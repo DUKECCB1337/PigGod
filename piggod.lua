@@ -21,6 +21,7 @@ local switchViewCooldown = false
 
 -- 全局变量和功能状态
 local mainGUI, tpMainFrame, featureButtonRefs = nil, nil, {}
+-- 全局变量和功能状态
 local moduleStates = {
 	NoClip = false,
 	NightVision = false,
@@ -37,8 +38,14 @@ local moduleStates = {
 	AntiWalkFling = false,
 	Sprint = false,
 	Lowhop = false,
-	Gravity = false
+	Gravity = false,
+	NoKnockBack = false,
+	NoSlow = false,
+	Bhop = false,
+	Hitbox = false,
+	ClickGUI = false -- 新增ClickGUI状态
 }
+
 
 -- 通知系统
 local function notify(text, time)
@@ -125,6 +132,7 @@ local currentJumpPower = 50
 local currentFlySpeed = 50
 local sprintSpeed = 40
 local currentGravity = 196.2 -- 默认重力值
+local currentHitboxScale = 1 -- 默认碰撞箱大小
 
 -- 角色重生时重新加载
 player.CharacterAdded:Connect(function(newChar)
@@ -397,6 +405,77 @@ local function disableKeepY()
 	end
 	keepYTarget = nil
 end
+---
+-- 功能实现：无击退 (NoKnockBack)
+local noKnockBackConn = nil
+
+local function enableNoKnockBack()
+    if noKnockBackConn then noKnockBackConn:Disconnect() end
+    local char = player.Character
+    if not char then return end
+
+    noKnockBackConn = RunService.Heartbeat:Connect(function()
+        for _, child in ipairs(char:GetChildren()) do
+            -- 检查所有可能导致击退的物理外力
+            if child:IsA("BodyVelocity") or child:IsA("BodyForce") or child:IsA("BodyGyro") then
+                child:Destroy()
+            end
+        end
+    end)
+end
+
+local function disableNoKnockBack()
+    if noKnockBackConn then
+        noKnockBackConn:Disconnect()
+        noKnockBackConn = nil
+    end
+end
+
+---
+-- 功能实现：无减速 (NoSlow)
+local noSlowConn = nil
+local originalWalkSpeed = 16 -- 默认行走速度
+
+local function enableNoSlow()
+    if noSlowConn then noSlowConn:Disconnect() end
+    local char = player.Character
+    if not char then return end
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
+
+    noSlowConn = humanoid.StateChanged:Connect(function(oldState, newState)
+        if newState == Enum.HumanoidStateType.Running and humanoid.WalkSpeed < originalWalkSpeed then
+            -- 如果角色进入"奔跑"状态但速度被降低，则强制恢复速度
+            humanoid.WalkSpeed = originalWalkSpeed
+        end
+    end)
+
+    -- 额外的心跳连接，以防StateChanged事件未触发
+    noSlowConn = RunService.Heartbeat:Connect(function()
+        local h = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+        if h and h.WalkSpeed < originalWalkSpeed then
+            h.WalkSpeed = originalWalkSpeed
+        end
+    end)
+end
+
+local function disableNoSlow()
+    if noSlowConn then
+        noSlowConn:Disconnect()
+        noSlowConn = nil
+    end
+    -- 禁用功能后，恢复角色速度到正常值或Speed模式下的值
+    local h = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+    if h then
+        if moduleStates.Speed then
+            h.WalkSpeed = currentSpeed
+        elseif moduleStates.Sprint then
+            h.WalkSpeed = sprintSpeed
+        else
+            h.WalkSpeed = 16
+        end
+    end
+end
 
 -- 功能实现：飞行
 local flyConn = nil
@@ -564,34 +643,69 @@ local function disableClickTP()
     end
 end
 
--- 功能实现：Lowhop (更新版本)
-local lowhopConn = nil
+local LowhopConn = nil
+local airTicks = 0
+local lastPosition = Vector3.new()
+local isJumping = false
+
+local function getSpeed()
+    local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return 0 end
+    local xzVelocity = Vector3.new(hrp.Velocity.X, 0, hrp.Velocity.Z)
+    return xzVelocity.Magnitude
+end
+
 local function enableLowhop()
-    if lowhopConn then lowhopConn:Disconnect() end
-    lowhopConn = RunService.RenderStepped:Connect(function()
+    if LowhopConn then LowhopConn:Disconnect() end
+    
+    LowhopConn = RunService.RenderStepped:Connect(function()
         local char = player.Character
         local humanoid = char and char:FindFirstChildOfClass("Humanoid")
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
 
         if not humanoid or not hrp then return end
 
-        if humanoid.MoveDirection.Magnitude > 0 and humanoid.FloorMaterial ~= Enum.Material.Air then
-            humanoid.Jump = true
+        if humanoid.FloorMaterial ~= Enum.Material.Air then
+            -- 玩家在地面上
+            airTicks = 0
+            if humanoid.MoveDirection.Magnitude > 0 then
+                humanoid.Jump = true -- 强制跳跃
+                isJumping = true
+            end
+            local currentSpeed = getSpeed()
+            local targetSpeed = math.max(currentSpeed * 1.025, 16.5) -- 模拟速度提升
+            hrp.Velocity = hrp.CFrame.LookVector * targetSpeed + Vector3.new(0, hrp.Velocity.Y, 0)
+        else
+            -- 玩家在空中
+            airTicks = airTicks + 1
+            if isJumping and airTicks == 1 then
+                -- 在跳跃的第一个Tick
+                local jumpHeight = 0.5 -- 模拟低跳高度
+                hrp.Velocity = Vector3.new(hrp.Velocity.X, jumpHeight, hrp.Velocity.Z)
+                isJumping = false
+            end
+            
+            -- 根据空中时间调整速度
+            if airTicks == 3 then
+                hrp.Velocity = Vector3.new(hrp.Velocity.X * 0.95, hrp.Velocity.Y, hrp.Velocity.Z * 0.95)
+            elseif airTicks == 4 then
+                hrp.Velocity = Vector3.new(hrp.Velocity.X, hrp.Velocity.Y - 0.2, hrp.Velocity.Z)
+            end
+            
+            local currentSpeed = getSpeed()
+            local targetSpeed = math.max(currentSpeed * 1.025, 16.5) -- 模拟空中速度提升
+            hrp.Velocity = hrp.CFrame.LookVector * targetSpeed + Vector3.new(0, hrp.Velocity.Y, 0)
         end
-		
-		-- 在跳跃后立即降低垂直速度，实现低跳
-		local jumpPower = humanoid.JumpPower
-		if hrp.Velocity.Y > jumpPower * 0.5 then
-			hrp.Velocity = Vector3.new(hrp.Velocity.X, 0, hrp.Velocity.Z)
-		end
     end)
 end
 
 local function disableLowhop()
-    if lowhopConn then
-        lowhopConn:Disconnect()
-        lowhopConn = nil
+    if LowhopConn then
+        LowhopConn:Disconnect()
+        LowhopConn = nil
     end
+    airTicks = 0
+    isJumping = false
 end
 
 -- 功能实现：重力设置
@@ -614,6 +728,124 @@ local function setGravity(value)
     notify("重力已设置为: " .. tostring(currentGravity), 1.5)
 end
 
+-- 功能实现：自定义碰撞箱 (Hitbox)
+local function applyHitboxToAllPlayers(scale)
+    local targetScale = Vector3.new(scale, scale, scale)
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= player and plr.Character then
+            for _, part in ipairs(plr.Character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    if part.Name == "HumanoidRootPart" then
+                        -- 人形根部，保持原大小以避免移动问题
+                        part.Size = Vector3.new(2, 2, 1)
+                    else
+                        part.Size = part.Size * targetScale
+                    end
+                end
+            end
+        end
+    end
+end
+
+local function resetAllHitboxes()
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= player and plr.Character then
+            for _, part in ipairs(plr.Character:GetDescendants()) do
+                if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" and part.Size.X ~= 1 then
+                    -- 假设默认大小为1，这里需要一个更鲁棒的恢复方法
+                    part.Size = part.Size / currentHitboxScale
+                end
+            end
+        end
+    end
+end
+--- 功能实现：Bhop (基于LiquidBounce的HypixelBHop模式)
+local bhopConn = nil
+local lastOnGround = false
+
+local function getSpeed()
+    local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return 0 end
+    local xzVelocity = Vector3.new(hrp.Velocity.X, 0, hrp.Velocity.Z)
+    return xzVelocity.Magnitude
+end
+
+local function enableBhop()
+    if bhopConn then bhopConn:Disconnect() end
+
+    bhopConn = RunService.Heartbeat:Connect(function()
+        local char = player.Character
+        local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+
+        if not humanoid or not hrp then return end
+
+        local isOnGround = humanoid.FloorMaterial ~= Enum.Material.Air
+
+        if isOnGround then
+            -- 在地面上的逻辑：进行一次跳跃并重置速度
+            if not lastOnGround then
+                -- 玩家刚刚落地
+                humanoid.Jump = true -- 强制跳跃
+                -- 核心速度调整：根据玩家当前速度微调
+                local currentSpeed = getSpeed()
+                local targetSpeed = math.max(currentSpeed, 16.5) -- 确保起跳速度
+                hrp.Velocity = hrp.CFrame.LookVector * targetSpeed + Vector3.new(0, hrp.Velocity.Y, 0)
+            end
+        else
+            -- 在空中的逻辑：持续微调速度
+            local horizontalMod = 0.0004
+            local yMod = 0.0004 -- 垂直加速，当向下移动时
+
+            if hrp.Velocity.Y < 0 then
+                hrp.Velocity = hrp.Velocity * Vector3.new(1 + horizontalMod, 1 + yMod, 1 + horizontalMod)
+            else
+                hrp.Velocity = hrp.Velocity * Vector3.new(1 + horizontalMod, 1, 1 + horizontalMod)
+            end
+
+        end
+
+        lastOnGround = isOnGround
+    end)
+end
+
+local function disableBhop()
+    if bhopConn then
+        bhopConn:Disconnect()
+        bhopConn = nil
+    end
+    lastOnGround = false
+end
+
+local function enableHitbox()
+    if currentHitboxScale > 0 then
+        applyHitboxToAllPlayers(currentHitboxScale)
+        notify("已将所有玩家碰撞箱大小设置为: " .. tostring(currentHitboxScale), 1.5)
+    else
+        notify("碰撞箱大小无效，请设置一个正数。", 1.5)
+    end
+end
+
+local function disableHitbox()
+    resetAllHitboxes()
+    notify("已恢复所有玩家的默认碰撞箱大小。", 1.5)
+end
+
+local function setHitboxScale(value)
+    local newScale = tonumber(value)
+    if not newScale or newScale <= 0 then
+        notify("无效的碰撞箱大小（必须为正数）。", 1.5)
+        return
+    end
+    currentHitboxScale = newScale
+    if moduleStates.Hitbox then
+        disableHitbox() -- 先恢复，再应用新的
+        applyHitboxToAllPlayers(currentHitboxScale)
+    end
+    notify("碰撞箱大小已设置为: " .. tostring(currentHitboxScale), 1.5)
+end
+
+
 -- 功能映射表：将功能名称与启用/禁用函数关联起来
 local featureHandlers = {
     NoClip = {enable = enableNoClip, disable = disableNoClip},
@@ -624,6 +856,7 @@ local featureHandlers = {
     Speed = {enable = applyWalkSpeedToCharacter, disable = applyWalkSpeedToCharacter},
     HighJump = {enable = applyJumpPower, disable = applyJumpPower},
     KeepY = {enable = enableKeepY, disable = disableKeepY},
+    Bhop = {enable = enableBhop, disable = disableBhop},
     TP = {
         enable = function() tpMainFrame.Visible = true end,
         disable = function() tpMainFrame.Visible = false end
@@ -634,7 +867,19 @@ local featureHandlers = {
     AntiWalkFling = {enable = enableAntiWalkFling, disable = disableAntiWalkFling},
     Sprint = {enable = enableSprint, disable = disableSprint},
     Lowhop = {enable = enableLowhop, disable = disableLowhop},
-	Gravity = {enable = enableGravity, disable = disableGravity}
+	Gravity = {enable = enableGravity, disable = disableGravity},
+	Hitbox = {enable = enableHitbox, disable = disableHitbox},
+	ClickGUI = {
+		enable = function()
+			mainGUI.Visible = true
+			isViewUnlocked = true
+			createAndEquipViewControlTool()
+		end,
+		disable = function()
+			mainGUI.Visible = false
+			isViewUnlocked = false
+		end
+	}
 }
 
 -- 键位绑定系统
@@ -655,7 +900,8 @@ local keybinds = {
 	AntiWalkFling = nil,
 	Sprint = nil,
 	Lowhop = nil,
-	Gravity = nil
+	Gravity = nil,
+	Hitbox = nil -- 新增 Hitbox 键位绑定
 }
 
 local bindingInProgress = false
@@ -677,7 +923,7 @@ local function startBinding(featureName)
 		if gameProcessed or input.UserInputType ~= Enum.UserInputType.Keyboard then return end
 
 		keybinds[currentBindingFeature] = input.KeyCode
-		notify("'"..currentBindingFeature.."' 已绑定到: "..input.KeyCode.Name, 2)
+		notify("'"..currentBindingFeature.."'' 已绑定到: "..input.KeyCode.Name, 2)
 		
 		bindingInProgress = false
 		currentBindingFeature = nil
@@ -688,11 +934,6 @@ end
 
 -- 功能切换函数（按名称）
 local function performToggleByName(fname)
-	if fname == "ClickGUI" then
-		notify("ClickGUI无需切换，通过RightShift打开", 1.5)
-		return
-	end
-	
 	if not featureHandlers[fname] then
         notify("无效的功能: "..fname, 1.5)
         return
@@ -986,6 +1227,7 @@ local function createMainGUI()
 	closeBtn.Parent = title
 	closeBtn.Activated:Connect(function()
 		gui.Visible = false
+		moduleStates.ClickGUI = false
 	end)
 
 	local tabList = Instance.new("ScrollingFrame")
@@ -1007,13 +1249,14 @@ local function createMainGUI()
 	contentFrame.BorderSizePixel = 0
 	contentFrame.Parent = mainFrame
 
-	local CategoryFeatureMap = {
-		Movement = {"NoClip", "Speed", "HighJump", "KeepY", "Fly", "AirJump", "WallClimb", "Sprint", "Lowhop", "Gravity"},
-		Visual = {"NightVision", "ESP"},
-		Exploits = {"WalkFling", "TP", "ClickTP"},
-		Player = {"AntiWalkFling"},
-		Misc = {"ClickGUI"}
-	}
+local CategoryFeatureMap = {
+    Movement = {"NoClip", "Speed", "HighJump", "KeepY", "Fly", "AirJump", "WallClimb", "Sprint", "Lowhop", "Gravity","Bhop"},
+    Visual = {"NightVision", "ESP"},
+    Exploits = {"WalkFling", "TP", "ClickTP"},
+    Player = {"AntiWalkFling", "NoKnockBack", "NoSlow"},
+    Combat = {"Hitbox"},
+    Misc = {"ClickGUI"}
+}
 	
 	local lastActiveTab = nil
 
@@ -1059,12 +1302,12 @@ local function createMainGUI()
 
 			featureButtonRefs[featureName] = { button = featureBtn, frame = buttonFrame }
 			
-			if featureName == "Speed" or featureName == "HighJump" or featureName == "Fly" or featureName == "Gravity" then
+			if featureName == "Speed" or featureName == "HighJump" or featureName == "Fly" or featureName == "Gravity" or featureName == "Hitbox" then
 				local inputField = Instance.new("TextBox")
 				inputField.Size = UDim2.new(0, 60, 1, 0)
 				inputField.Position = UDim2.new(0, 160, 0, 0)
 				inputField.PlaceholderText = "Value"
-				inputField.Text = tostring(featureName == "Speed" and currentSpeed or featureName == "HighJump" and currentJumpPower or featureName == "Fly" and currentFlySpeed or currentGravity)
+				inputField.Text = tostring(featureName == "Speed" and currentSpeed or featureName == "HighJump" and currentJumpPower or featureName == "Fly" and currentFlySpeed or featureName == "Gravity" and currentGravity or currentHitboxScale)
 				inputField.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 				inputField.TextColor3 = Color3.fromRGB(255, 255, 255)
 				inputField.TextScaled = true
@@ -1076,6 +1319,7 @@ local function createMainGUI()
 					elseif featureName == "HighJump" then setJumpPower(value)
 					elseif featureName == "Fly" then setFlySpeed(value)
 					elseif featureName == "Gravity" then setGravity(value)
+					elseif featureName == "Hitbox" then setHitboxScale(value)
 					end
 				end)
 			end
@@ -1100,8 +1344,10 @@ local function createMainGUI()
 				elseif featureName == "AirJump" then contentText = "启用后可以在空中无限次跳跃。"
 				elseif featureName == "WallClimb" then contentText = "启用后靠近墙壁时会自动攀爬。"
 				elseif featureName == "Sprint" then contentText = "启用后角色的行走速度会提升到疾跑速度。"
-				elseif featureName == "Lowhop" then contentText = "启用后将自动进行超低跳跃，通过节省下落时间来获得Hop速度加成。"
+				elseif featureName == "Lowhop" then contentText = "启用后将自动进行超低跳跃，跳跃高度缩减为原来的30%。"
 				elseif featureName == "NightVision" then contentText = "启用后游戏亮度将最大化，可以清晰看到黑暗区域。"
+				elseif featureName == "NoKnockBack" then contentText = "防止玩家被外力击退，如物理攻击或爆炸。"
+                elseif featureName == "NoSlow" then contentText = "防止玩家被减速效果影响，始终保持正常移动速度。"
 				elseif featureName == "ESP" then contentText = "启用后将高亮显示其他玩家，即使隔着障碍物也能看到。"
 				elseif featureName == "WalkFling" then contentText = "利用移动时的物理惯性将周围玩家甩飞。"
 				elseif featureName == "TP" then contentText = "打开一个列表，可以选择其他玩家进行传送。"
@@ -1111,6 +1357,9 @@ local function createMainGUI()
 				elseif featureName == "Gravity" then
 					contentText = "调整游戏世界的重力。默认重力值为 196.2。"
 					inputHandler = setGravity
+				elseif featureName == "Hitbox" then
+					contentText = "调整其他玩家的碰撞箱大小。输入框可设置新的比例（例如：2代表放大2倍）。"
+					inputHandler = setHitboxScale
 				end
 				createDetailPanel(titleText, contentText, inputHandler)
 			end)
@@ -1174,15 +1423,6 @@ local function init()
 		end
 		
 		if gameProcessed then return end
-		if input.KeyCode == keybinds.ClickGUI then
-			mainGUI.Visible = not mainGUI.Visible
-			if mainGUI.Visible then
-				isViewUnlocked = true
-				createAndEquipViewControlTool()
-			else
-				isViewUnlocked = false
-			end
-		end
 		
 		-- 新增：点击空白区域重新锁定鼠标
 		if input.UserInputType == Enum.UserInputType.MouseButton1 and UIS.MouseBehavior == Enum.MouseBehavior.Default and not gameProcessed then
@@ -1204,7 +1444,7 @@ local function init()
 	UIS.InputBegan:Connect(function(input, gameProcessed)
 		if gameProcessed or bindingInProgress then return end
 		for fname, kcode in pairs(keybinds) do
-			if kcode == input.KeyCode and fname ~= "ClickGUI" and fname ~= "End" then
+			if kcode == input.KeyCode then
 				performToggleByName(fname)
 				return
 			end
