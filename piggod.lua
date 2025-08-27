@@ -446,25 +446,27 @@ end
 
 ---
 -- 功能实现：无减速 (NoSlow)
-local noSlowConn = nil
+local noSlowStateConn = nil
+local noSlowHeartbeatConn = nil
 local originalWalkSpeed = 16 -- 默认行走速度
 
 local function enableNoSlow()
-    if noSlowConn then noSlowConn:Disconnect() end
+    if noSlowStateConn then noSlowStateConn:Disconnect() end
+    if noSlowHeartbeatConn then noSlowHeartbeatConn:Disconnect() end
+    
     local char = player.Character
     if not char then return end
     local humanoid = char:FindFirstChildOfClass("Humanoid")
     if not humanoid then return end
 
-    noSlowConn = humanoid.StateChanged:Connect(function(oldState, newState)
+    noSlowStateConn = humanoid.StateChanged:Connect(function(oldState, newState)
         if newState == Enum.HumanoidStateType.Running and humanoid.WalkSpeed < originalWalkSpeed then
             -- 如果角色进入"奔跑"状态但速度被降低，则强制恢复速度
             humanoid.WalkSpeed = originalWalkSpeed
         end
     end)
 
-    -- 额外的心跳连接，以防StateChanged事件未触发
-    noSlowConn = RunService.Heartbeat:Connect(function()
+    noSlowHeartbeatConn = RunService.Heartbeat:Connect(function()
         local h = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
         if h and h.WalkSpeed < originalWalkSpeed then
             h.WalkSpeed = originalWalkSpeed
@@ -473,11 +475,15 @@ local function enableNoSlow()
 end
 
 local function disableNoSlow()
-    if noSlowConn then
-        noSlowConn:Disconnect()
-        noSlowConn = nil
+    if noSlowStateConn then
+        noSlowStateConn:Disconnect()
+        noSlowStateConn = nil
     end
-    -- 禁用功能后，恢复角色速度到正常值或Speed模式下的值
+    if noSlowHeartbeatConn then
+        noSlowHeartbeatConn:Disconnect()
+        noSlowHeartbeatConn = nil
+    end
+    
     local h = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
     if h then
         if moduleStates.Speed then
@@ -514,6 +520,7 @@ local function enableFly()
 		if not char then return end
 		local root = char:FindFirstChild("HumanoidRootPart")
 		if not root then return end
+		
 		local moveDirection = humanoid.MoveDirection
 		local flyVelocity = Vector3.new(0, 0, 0)
 		if moveDirection.Magnitude > 0 then
@@ -521,7 +528,9 @@ local function enableFly()
 		end
 		if UIS:IsKeyDown(Enum.KeyCode.Space) then flyVelocity = flyVelocity + Vector3.new(0, currentFlySpeed, 0) end
 		if UIS:IsKeyDown(Enum.KeyCode.LeftShift) then flyVelocity = flyVelocity - Vector3.new(0, currentFlySpeed, 0) end
-		root.CFrame = root.Cframe + flyVelocity * 0.05
+		
+		-- 修正了语法错误：用CFrame.new()来设置新的位置
+		root.CFrame = CFrame.new(root.Position + flyVelocity * 0.05)
 	end)
 end
 
@@ -679,26 +688,23 @@ local function enableLowhop()
         if not humanoid or not hrp then return end
 
         if humanoid.FloorMaterial ~= Enum.Material.Air then
-            -- 玩家在地面上
             airTicks = 0
             if humanoid.MoveDirection.Magnitude > 0 then
-                humanoid.Jump = true -- 强制跳跃
+                humanoid.Jump = true
                 isJumping = true
             end
             local currentSpeed = getSpeed()
-            local targetSpeed = math.max(currentSpeed * 1.025, 16.5) -- 模拟速度提升
-            hrp.Velocity = hrp.CFrame.LookVector * targetSpeed + Vector3.new(0, hrp.Velocity.Y, 0)
+            local targetSpeed = math.max(currentSpeed * 1.025, 16.5)
+            -- 修正了使用MoveDirection来决定速度方向
+            hrp.Velocity = humanoid.MoveDirection * targetSpeed + Vector3.new(0, hrp.Velocity.Y, 0)
         else
-            -- 玩家在空中
             airTicks = airTicks + 1
             if isJumping and airTicks == 1 then
-                -- 在跳跃的第一个Tick
-                local jumpHeight = 0.5 -- 模拟低跳高度
+                local jumpHeight = 0.5
                 hrp.Velocity = Vector3.new(hrp.Velocity.X, jumpHeight, hrp.Velocity.Z)
                 isJumping = false
             end
             
-            -- 根据空中时间调整速度
             if airTicks == 3 then
                 hrp.Velocity = Vector3.new(hrp.Velocity.X * 0.95, hrp.Velocity.Y, hrp.Velocity.Z * 0.95)
             elseif airTicks == 4 then
@@ -706,8 +712,9 @@ local function enableLowhop()
             end
             
             local currentSpeed = getSpeed()
-            local targetSpeed = math.max(currentSpeed * 1.025, 16.5) -- 模拟空中速度提升
-            hrp.Velocity = hrp.CFrame.LookVector * targetSpeed + Vector3.new(0, hrp.Velocity.Y, 0)
+            local targetSpeed = math.max(currentSpeed * 1.025, 16.5)
+            -- 修正了使用MoveDirection来决定速度方向
+            hrp.Velocity = humanoid.MoveDirection * targetSpeed + Vector3.new(0, hrp.Velocity.Y, 0)
         end
     end)
 end
@@ -796,19 +803,16 @@ local function enableBhop()
         local isOnGround = humanoid.FloorMaterial ~= Enum.Material.Air
 
         if isOnGround then
-            -- 在地面上的逻辑：进行一次跳跃并重置速度
             if not lastOnGround then
-                -- 玩家刚刚落地
-                humanoid.Jump = true -- 强制跳跃
-                -- 核心速度调整：根据玩家当前速度微调
+                humanoid.Jump = true
                 local currentSpeed = getSpeed()
-                local targetSpeed = math.max(currentSpeed, 16.5) -- 确保起跳速度
-                hrp.Velocity = hrp.CFrame.LookVector * targetSpeed + Vector3.new(0, hrp.Velocity.Y, 0)
+                local targetSpeed = math.max(currentSpeed, 16.5)
+                -- 修正了使用MoveDirection来决定速度方向
+                hrp.Velocity = humanoid.MoveDirection * targetSpeed + Vector3.new(0, hrp.Velocity.Y, 0)
             end
         else
-            -- 在空中的逻辑：持续微调速度
             local horizontalMod = 0.0004
-            local yMod = 0.0004 -- 垂直加速，当向下移动时
+            local yMod = 0.0004
 
             if hrp.Velocity.Y < 0 then
                 hrp.Velocity = hrp.Velocity * Vector3.new(1 + horizontalMod, 1 + yMod, 1 + horizontalMod)
