@@ -639,7 +639,7 @@ local featureHandlers = {
 
 -- 键位绑定系统
 local keybinds = {
-	ClickGUI = Enum.KeyCode.RightCtrl,
+	ClickGUI = Enum.KeyCode.RightShift,
 	Speed = nil,
 	HighJump = nil,
 	KeepY = nil,
@@ -689,7 +689,7 @@ end
 -- 功能切换函数（按名称）
 local function performToggleByName(fname)
 	if fname == "ClickGUI" then
-		notify("ClickGUI无需切换，通过RightCtrl打开", 1.5)
+		notify("ClickGUI无需切换，通过RightShift打开", 1.5)
 		return
 	end
 	
@@ -1096,7 +1096,7 @@ local function createMainGUI()
 				elseif featureName == "Speed" then contentText = "调整行走速度。输入框可以设置新的速度值 (1-500)。"
 				elseif featureName == "HighJump" then contentText = "调整跳跃高度。输入框可以设置新的跳跃力 (1-200)。"
 				elseif featureName == "KeepY" then contentText = "启用后将锁定角色的Y轴高度，防止掉落。"
-				elseif featureName == "Fly" then contentText = "启用后可自由飞行，WASD移动，空格上升，shift下降。输入框可设置飞行速度 (1-300)。"
+				elseif featureName == "Fly" then contentText = "启用后可自由飞行，WASD移动，空格上升，Shift下降。输入框可设置飞行速度 (1-300)。"
 				elseif featureName == "AirJump" then contentText = "启用后可以在空中无限次跳跃。"
 				elseif featureName == "WallClimb" then contentText = "启用后靠近墙壁时会自动攀爬。"
 				elseif featureName == "Sprint" then contentText = "启用后角色的行走速度会提升到疾跑速度。"
@@ -1107,7 +1107,7 @@ local function createMainGUI()
 				elseif featureName == "TP" then contentText = "打开一个列表，可以选择其他玩家进行传送。"
 				elseif featureName == "ClickTP" then contentText = "启用后，鼠标左键点击任意地方即可瞬移到该位置。"
 				elseif featureName == "AntiWalkFling" then contentText = "防止被其他玩家的甩飞功能影响。"
-				elseif featureName == "ClickGUI" then contentText = "默认按键 'RightCtrl' 用于打开/关闭GUI面板。"
+				elseif featureName == "ClickGUI" then contentText = "默认按键 'RightShift' 用于打开/关闭GUI面板。"
 				elseif featureName == "Gravity" then
 					contentText = "调整游戏世界的重力。默认重力值为 196.2。"
 					inputHandler = setGravity
@@ -1214,7 +1214,7 @@ local function init()
 	-- 首次加载时创建工具
     createAndEquipViewControlTool()
 	
-	notify("客户端初始化完成！默认快捷键: RightCtrl", 3)
+	notify("客户端初始化完成！默认快捷键: RightShift", 3)
 end
 
 -- 启动初始化
