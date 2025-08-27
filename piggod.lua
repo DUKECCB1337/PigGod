@@ -222,10 +222,10 @@ local function disableNoClip()
 	local char = player.Character
 	if not char then return end
 	for _, part in ipairs(char:GetDescendants()) do
-		if part:IsA("BasePart") then
-			part.CanCollide = true
+			if part:IsA("BasePart") then
+				part.CanCollide = true
+			end
 		end
-	end
 end
 
 -- 功能实现：ESP
@@ -1423,9 +1423,17 @@ end
 
 -- 初始化函数
 local function init()
+    -- 确保 TP GUI 在初始化时是隐藏的
 	tpMainFrame = createTPGUI()
 	tpMainFrame.Visible = false
+    
 	mainGUI = createMainGUI()
+    -- 首次加载时自动打开主GUI
+	mainGUI.Visible = true
+	moduleStates.ClickGUI = true
+	isViewUnlocked = true
+	manageMouseLock()
+	refreshButtonVisual("ClickGUI")
 	
 	UIS.InputBegan:Connect(function(input, gameProcessed)
 		if gameProcessed or bindingInProgress then return end
@@ -1448,13 +1456,6 @@ local function init()
 	
 	-- 首次加载时创建工具
     createAndEquipViewControlTool()
-	
-	-- 自动打开主GUI
-	mainGUI.Visible = true
-	moduleStates.ClickGUI = true
-	isViewUnlocked = true
-	manageMouseLock()
-	refreshButtonVisual("ClickGUI")
 
 	notify("客户端初始化完成！", 3)
 	if UIS.TouchEnabled then
