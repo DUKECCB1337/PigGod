@@ -74,6 +74,19 @@ local function notify(text, time)
 	notif:Destroy()
 end
 
+-- 鼠标锁定/解锁功能
+local function manageMouseLock()
+	if isViewUnlocked then
+		-- 解锁鼠标以与GUI互动
+		UIS.MouseBehavior = Enum.MouseBehavior.Free
+		camera.CameraType = Enum.CameraType.Scriptable
+	else
+		-- 锁定鼠标以控制视角
+		UIS.MouseBehavior = Enum.MouseBehavior.LockCenter
+		camera.CameraType = Enum.CameraType.Custom
+	end
+end
+
 -- 功能按钮刷新
 local function refreshButtonVisual(featureName)
 	local ref = featureButtonRefs[featureName]
@@ -508,7 +521,7 @@ local function enableFly()
 		end
 		if UIS:IsKeyDown(Enum.KeyCode.Space) then flyVelocity = flyVelocity + Vector3.new(0, currentFlySpeed, 0) end
 		if UIS:IsKeyDown(Enum.KeyCode.LeftShift) then flyVelocity = flyVelocity - Vector3.new(0, currentFlySpeed, 0) end
-		root.CFrame = root.CFrame + flyVelocity * 0.05
+		root.CFrame = root.Cframe + flyVelocity * 0.05
 	end)
 end
 
@@ -872,12 +885,19 @@ local featureHandlers = {
 	ClickGUI = {
 		enable = function()
 			mainGUI.Visible = true
+			if mainGUI:FindFirstChild("MobileButton") then
+				mainGUI.MobileButton.Visible = true
+			end
 			isViewUnlocked = true
-			createAndEquipViewControlTool()
+			manageMouseLock() -- 切换鼠标锁定
 		end,
 		disable = function()
 			mainGUI.Visible = false
+			if mainGUI:FindFirstChild("MobileButton") then
+				mainGUI.MobileButton.Visible = true -- 按钮始终可见以便再次打开
+			end
 			isViewUnlocked = false
+			manageMouseLock() -- 切换鼠标锁定
 		end
 	}
 }
@@ -974,6 +994,7 @@ local function createDetailPanel(titleText, content, inputHandler)
 	frame.BackgroundColor3 = Color3.fromRGB(26, 26, 26)
 	frame.BorderSizePixel = 0
 	frame.Active = true
+	frame.Draggable = true -- 启用GUI拖动
 	frame.Parent = playerGui
 	frame.ZIndex = 10000
 	Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 8)
@@ -990,24 +1011,6 @@ local function createDetailPanel(titleText, content, inputHandler)
 	title.TextColor3 = Color3.fromRGB(255, 255, 255)
 	title.Font = Enum.Font.GothamSemibold
 	title.Parent = frame
-	local dragConn = nil
-	title.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			local initialPos = frame.Position
-			local initialMousePos = UIS:GetMouseLocation()
-			dragConn = UIS.InputChanged:Connect(function(input2)
-				if input2.UserInputType == Enum.UserInputType.MouseMovement then
-					local delta = UIS:GetMouseLocation() - initialMousePos
-					frame.Position = initialPos + UDim2.new(0, delta.X, 0, delta.Y)
-				end
-			end)
-		end
-	end)
-	title.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 and dragConn then
-			dragConn:Disconnect()
-		end
-	end)
 
 	local closeBtn = Instance.new("TextButton")
 	closeBtn.Size = UDim2.new(0, 25, 0, 25)
@@ -1083,6 +1086,7 @@ local function createTPGUI()
 	frame.AnchorPoint = Vector2.new(1, 0)
 	frame.BackgroundColor3 = Color3.fromRGB(26, 26, 26)
 	frame.BorderSizePixel = 0
+	frame.Draggable = true -- 启用GUI拖动
 	frame.Parent = gui
 	Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 8)
 
@@ -1184,6 +1188,7 @@ local function createMainGUI()
 	mainFrame.BackgroundColor3 = Color3.fromRGB(26, 26, 26)
 	mainFrame.BorderSizePixel = 0
 	mainFrame.Active = true
+	mainFrame.Draggable = true -- 启用GUI拖动
 	mainFrame.Parent = gui
 	Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 8)
 
@@ -1196,25 +1201,7 @@ local function createMainGUI()
 	title.TextScaled = true
 	title.Font = Enum.Font.GothamSemibold
 	title.Parent = mainFrame
-	local dragConn = nil
-	title.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			local initialPos = mainFrame.Position
-			local initialMousePos = UIS:GetMouseLocation()
-			dragConn = UIS.InputChanged:Connect(function(input2)
-				if input2.UserInputType == Enum.UserInputType.MouseMovement then
-					local delta = UIS:GetMouseLocation() - initialMousePos
-					mainFrame.Position = initialPos + UDim2.new(0, delta.X, 0, delta.Y)
-				end
-			end)
-		end
-	end)
-	title.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 and dragConn then
-			dragConn:Disconnect()
-		end
-	end)
-
+	
 	local closeBtn = Instance.new("TextButton")
 	closeBtn.Name = "CloseBtn"
 	closeBtn.Size = UDim2.new(0, 25, 0, 25)
@@ -1226,8 +1213,7 @@ local function createMainGUI()
 	closeBtn.Text = "X"
 	closeBtn.Parent = title
 	closeBtn.Activated:Connect(function()
-		gui.Visible = false
-		moduleStates.ClickGUI = false
+		performToggleByName("ClickGUI")
 	end)
 
 	local tabList = Instance.new("ScrollingFrame")
@@ -1249,14 +1235,14 @@ local function createMainGUI()
 	contentFrame.BorderSizePixel = 0
 	contentFrame.Parent = mainFrame
 
-local CategoryFeatureMap = {
-    Movement = {"NoClip", "Speed", "HighJump", "KeepY", "Fly", "AirJump", "WallClimb", "Sprint", "Lowhop", "Gravity","Bhop"},
-    Visual = {"NightVision", "ESP"},
-    Exploits = {"WalkFling", "TP", "ClickTP"},
-    Player = {"AntiWalkFling", "NoKnockBack", "NoSlow"},
-    Combat = {"Hitbox"},
-    Misc = {"ClickGUI"}
-}
+	local CategoryFeatureMap = {
+		Movement = {"NoClip", "Speed", "HighJump", "KeepY", "Fly", "AirJump", "WallClimb", "Sprint", "Lowhop", "Gravity","Bhop"},
+		Visual = {"NightVision", "ESP"},
+		Exploits = {"WalkFling", "TP", "ClickTP"},
+		Player = {"AntiWalkFling", "NoKnockBack", "NoSlow"},
+		Combat = {"Hitbox"},
+		Misc = {"ClickGUI"}
+	}
 	
 	local lastActiveTab = nil
 
@@ -1385,6 +1371,46 @@ local CategoryFeatureMap = {
 	
 	mainFrame.Visible = false
 	
+	-- 创建一个浮动按钮，仅在触屏设备上可见
+	local mobileButton = Instance.new("TextButton")
+	mobileButton.Name = "MobileButton"
+	mobileButton.Text = "PigGod"
+	mobileButton.Size = UDim2.new(0, 80, 0, 40)
+	mobileButton.Position = UDim2.new(0.01, 0, 0.05, 0)
+	mobileButton.BackgroundColor3 = Color3.fromRGB(10, 100, 200)
+	mobileButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+	mobileButton.Font = Enum.Font.GothamSemibold
+	mobileButton.TextScaled = true
+	mobileButton.ZIndex = 11000
+	mobileButton.Parent = gui
+	mobileButton.Visible = UIS.TouchEnabled
+	Instance.new("UICorner", mobileButton).CornerRadius = UDim.new(0, 6)
+	
+	-- 浮动按钮的拖动功能
+	local dragConn = nil
+	mobileButton.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			local initialPos = mobileButton.Position
+			local initialMousePos = UIS:GetMouseLocation()
+			dragConn = UIS.InputChanged:Connect(function(input2)
+				if input2.UserInputType == Enum.UserInputType.MouseMovement or input2.UserInputType == Enum.UserInputType.Touch then
+					local delta = UIS:GetMouseLocation() - initialMousePos
+					mobileButton.Position = initialPos + UDim2.new(0, delta.X, 0, delta.Y)
+				end
+			end)
+		end
+	end)
+	mobileButton.InputEnded:Connect(function(input)
+		if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) and dragConn then
+			dragConn:Disconnect()
+			dragConn = nil
+		end
+	end)
+
+	mobileButton.Activated:Connect(function()
+		performToggleByName("ClickGUI")
+	end)
+
 	task.spawn(function()
 		task.wait(0.1)
 		if tabList:FindFirstChildOfClass("TextButton") then
@@ -1400,49 +1426,18 @@ local function init()
 	tpMainFrame = createTPGUI()
 	tpMainFrame.Visible = false
 	mainGUI = createMainGUI()
-	mainGUI.Visible = false
 	
-	local endKeyIsDown = false
-	local unlockNotified = false
-	local lastMouseLockState = nil
-
-	UIS.InputBegan:Connect(function(input, gameProcessed)
-		if input.KeyCode == Enum.KeyCode.End then
-			endKeyIsDown = true
-			if UIS.MouseBehavior ~= Enum.MouseBehavior.Default then
-				-- 只有在鼠标未解锁时才保存状态并解锁
-				if lastMouseLockState == nil then
-					lastMouseLockState = UIS.MouseBehavior
-				end
-				UIS.MouseBehavior = Enum.MouseBehavior.Default
-				if not unlockNotified then
-					notify("已长按'End'键解锁鼠标，点击空白区域重新锁定", 2)
-					unlockNotified = true
-				end
-			end
-		end
-		
-		if gameProcessed then return end
-		
-		-- 新增：点击空白区域重新锁定鼠标
-		if input.UserInputType == Enum.UserInputType.MouseButton1 and UIS.MouseBehavior == Enum.MouseBehavior.Default and not gameProcessed then
-			if lastMouseLockState then
-				UIS.MouseBehavior = lastMouseLockState
-				lastMouseLockState = nil
-				unlockNotified = false
-				notify("鼠标已恢复锁定", 1.5)
-			end
-		end
-	end)
-	
-	UIS.InputEnded:Connect(function(input, gameProcessed)
-		if input.KeyCode == Enum.KeyCode.End then
-			endKeyIsDown = false
-		end
-	end)
-
 	UIS.InputBegan:Connect(function(input, gameProcessed)
 		if gameProcessed or bindingInProgress then return end
+
+		-- 鼠标解锁/锁定功能（桌面端）
+		if input.KeyCode == Enum.KeyCode.End and not UIS.TouchEnabled then
+			isViewUnlocked = not isViewUnlocked
+			manageMouseLock()
+			notify("鼠标锁定已" .. (isViewUnlocked and "解锁" or "锁定"), 1.5)
+			return -- 阻止End键触发其他功能
+		end
+
 		for fname, kcode in pairs(keybinds) do
 			if kcode == input.KeyCode then
 				performToggleByName(fname)
@@ -1454,7 +1449,19 @@ local function init()
 	-- 首次加载时创建工具
     createAndEquipViewControlTool()
 	
-	notify("客户端初始化完成！默认快捷键: RightShift", 3)
+	-- 自动打开主GUI
+	mainGUI.Visible = true
+	moduleStates.ClickGUI = true
+	isViewUnlocked = true
+	manageMouseLock()
+	refreshButtonVisual("ClickGUI")
+
+	notify("客户端初始化完成！", 3)
+	if UIS.TouchEnabled then
+		notify("移动端浮动按钮已启用，点击可打开/关闭GUI。", 3)
+	else
+		notify("桌面端快捷键: 右Shift键打开GUI，End键解锁鼠标。", 3)
+	end
 end
 
 -- 启动初始化
