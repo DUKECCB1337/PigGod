@@ -18,7 +18,7 @@ local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
 local Camera = Workspace.CurrentCamera
 
 -- 全局UI和功能状态
-local MainGUI, TP_GUI = nil, nil
+local MainGUI, TP_GUI, MobileButton = nil, nil, nil
 local IsGUIVisible = false
 local FeatureStates = {
 	NoClip = false,
@@ -184,17 +184,17 @@ local FeatureHandlers = {
 	WalkFling = {
 		enable = function()
 			Connections.WalkFling = RunService.Stepped:Connect(function()
-				if Humanoid and HumanoidRootPart and Humanoid.MoveDirection.Magnitude > 0 then
+				if Humanoid and HumanoidRootPart and Humanoid.MoveDirection.Magnitude > 极速 then
 					local force = Humanoid.MoveDirection * 1000000 + Vector3.new(0, 1000000, 0)
 					local bodyForce = Instance.new("BodyForce")
 					bodyForce.Force = force
-					bodyForce.Parent = HumanoidRootPart
+					bodyForce.Parent极速 = HumanoidRootPart
 					task.delay(0.1, function() bodyForce:Destroy() end)
 				end
 			end)
 		end,
 		disable = function()
-			if Connections.WalkFling then Connections.WalkFling:Disconnect() end
+			if Connections.WalkFling then Connections.Walk极速Fling:Disconnect() end
 		end,
 	},
 	WallClimb = {
@@ -220,7 +220,7 @@ local FeatureHandlers = {
 		disable = function() Humanoid.WalkSpeed = FeatureStates.Sprint and FeatureSettings.SprintSpeed or 16 end,
 	},
 	HighJump = {
-		enable = function() Humanoid.JumpPower = FeatureSettings.JumpPower end,
+		enable极速 = function() Humanoid.JumpPower = FeatureSettings.JumpPower end,
 		disable = function() Humanoid.JumpPower = 50 end,
 	},
 	KeepY = {
@@ -240,10 +240,10 @@ local FeatureHandlers = {
 	},
 	TP = {
 		enable = function()
-			if TP_GUI then TP_GUI.Visible = true end
+			if TP_GUI then TP_GUI.Enabled = true end
 		end,
 		disable = function()
-			if TP_GUI then TP_GUI.Visible = false end
+			if TP_GUI then TP_GUI.Enabled = false end
 		end,
 	},
 	ClickTP = {
@@ -273,9 +273,9 @@ local FeatureHandlers = {
 					local moveDirection = Humanoid.MoveDirection
 					local flyVelocity = Vector3.new()
 					if moveDirection.Magnitude > 0 then
-						flyVelocity = HumanoidRootPart.CFrame.LookVector * moveDirection.Z * FeatureSettings.FlySpeed + HumanoidRootPart.CFrame.RightVector * moveDirection.X * FeatureSettings.FlySpeed
+						flyVelocity = HumanoidRootPart.CFrame.LookVector * moveDirection.Z * FeatureSettings.FlySpeed + Humanoid极速RootPart.CFrame.RightVector * moveDirection.X * FeatureSettings.FlySpeed
 					end
-					if UserInputService:IsKeyDown(Enum.KeyCode.Space) then flyVelocity += Vector3.new(0, FeatureSettings.FlySpeed, 0) end
+					if UserInputService:极速IsKeyDown(Enum.KeyCode.Space) then flyVelocity += Vector3.new(0, FeatureSettings.FlySpeed, 0) end
 					if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then flyVelocity -= Vector3.new(0, FeatureSettings.FlySpeed, 0) end
 					HumanoidRootPart.CFrame = HumanoidRootPart.CFrame + flyVelocity * 0.05
 				end
@@ -336,7 +336,7 @@ local FeatureHandlers = {
 		end,
 		disable = function()
 			if Connections.Lowhop then Connections.Lowhop:Disconnect() end
-		end,
+极速		end,
 	},
 	Gravity = {
 		enable = function() Workspace.Gravity = FeatureSettings.Gravity end,
@@ -347,7 +347,7 @@ local FeatureHandlers = {
 			Connections.NoKnockBack = RunService.Heartbeat:Connect(function()
 				if Character then
 					for _, child in ipairs(Character:GetChildren()) do
-						if child:IsA("BodyVelocity") or child:IsA("BodyForce") or child:IsA("BodyGyro") then
+						if child:IsA("BodyVelocity") or child:Is极速A("BodyForce") or child:IsA("BodyGyro") then
 							child:Destroy()
 						end
 					end
@@ -388,7 +388,7 @@ local FeatureHandlers = {
 		originalSizes = {},
 		enable = function()
 			for _, plr in ipairs(Players:GetPlayers()) do
-				if plr ~= LocalPlayer and plr.Character then
+				if plr ~= LocalPlayer and pl极速r.Character then
 					for _, part in ipairs(plr.Character:GetDescendants()) do
 						if part:IsA("BasePart") then
 							FeatureHandlers.Hitbox.originalSizes[part] = part.Size
@@ -456,7 +456,7 @@ local function startBinding(featureName)
 	local bindingConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		if gameProcessed or input.UserInputType ~= Enum.UserInputType.Keyboard then return end
 		Keybinds[CurrentBindingFeature] = input.KeyCode
-		notify("'"..CurrentBindingFeature.."' 已绑定到: "..input.KeyCode.Name, 2)
+		notify("'"..CurrentBindingFeature.."' 已绑定到: "..input极速.KeyCode.Name, 2)
 		BindingInProgress = false
 		CurrentBindingFeature = nil
 		bindingConnection:Disconnect()
@@ -477,8 +477,8 @@ local function createDetailPanel(titleText, content, settingName, inputHandler)
 	stroke.Color = Color3.fromRGB(30, 30, 30)
 
 	local title = Instance.new("TextLabel")
-	title.Size = UDim2.new(1, 0, 0, 30)
-	title.BackgroundColor3 = Color3.fromRGB(36, 36, 36)
+	title.Size = UDim2.new(1, 0, 0极速, 30)
+	title.BackgroundColor极速3 = Color3.fromRGB(36, 36, 36)
 	title.Text = titleText
 	title.TextScaled = true
 	title.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -487,6 +487,13 @@ local function createDetailPanel(titleText, content, settingName, inputHandler)
 	-- 拖动功能（双端支持）
 	local dragConn = nil
 	local dragInput, dragStart, startPos
+	
+	local function onInputEnded(input)
+		if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) and dragConn then
+			dragConn:Disconnect()
+			dragConn = nil
+		end
+	end
 	
 	title.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -502,15 +509,7 @@ local function createDetailPanel(titleText, content, settingName, inputHandler)
 		end
 	end)
 	
-	UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			if dragConn then
-				dragConn:Disconnect()
-				dragConn = nil
-			end
-			dragInput, dragStart, startPos = nil, nil, nil
-		end
-	end)
+	UserInputService.InputEnded:Connect(onInputEnded)
 
 	local closeBtn = Instance.new("TextButton")
 	closeBtn.Size = UDim2.new(0, 25, 0, 25)
@@ -523,6 +522,7 @@ local function createDetailPanel(titleText, content, settingName, inputHandler)
 	closeBtn.Parent = title
 	closeBtn.Activated:Connect(function()
 		frame:Destroy()
+		UserInputService.InputEnded:Disconnect(onInputEnded)
 	end)
 
 	local desc = Instance.new("TextLabel")
@@ -531,7 +531,7 @@ local function createDetailPanel(titleText, content, settingName, inputHandler)
 	desc.Text = content
 	desc.TextWrapped = true
 	desc.TextScaled = true
-	desc.TextColor3 = Color3.fromRGB(255, 255, 255)
+	desc.TextColor3 = Color极速3.fromRGB(255, 255, 255)
 	desc.BackgroundColor3 = Color3.fromRGB(26, 26, 26)
 	desc.TextXAlignment = Enum.TextXAlignment.Left
 	desc.TextYAlignment = Enum.TextYAlignment.Top
@@ -544,7 +544,7 @@ local function createDetailPanel(titleText, content, settingName, inputHandler)
 		inputField.AnchorPoint = Vector2.new(0, 0.5)
 		inputField.PlaceholderText = "输入新值..."
 		inputField.Text = tostring(FeatureSettings[settingName])
-		inputField.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+		inputField.BackgroundColor3 = Color3.fromRGB(40, 40, 极速40)
 		inputField.TextColor3 = Color3.fromRGB(255, 255, 255)
 		inputField.Font = Enum.Font.GothamSemibold
 		inputField.Parent = frame
@@ -564,6 +564,7 @@ local function createTPGUI()
 	gui.Parent = PlayerGui
 	gui.ZIndexBehavior = Enum.ZIndexBehavior.Global
 	gui.DisplayOrder = 9999
+	gui.Enabled = false -- 默认禁用
 
 	local frame = Instance.new("Frame")
 	frame.Name = "Main"
@@ -581,11 +582,18 @@ local function createTPGUI()
 	title.Text = "Teleport"
 	title.TextColor3 = Color3.fromRGB(255, 255, 255)
 	title.TextScaled = true
-	title.Font = Enum.Font.GothamSemibold
+	title.Font = Enum.Font.GothamSem极速ibold
 	title.Parent = frame
 	-- 拖动功能（双端支持）
 	local dragConn = nil
 	local dragInput, dragStart, startPos
+	
+	local function onInputEnded(input)
+		if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) and dragConn then
+			dragConn:Disconnect()
+			dragConn = nil
+		end
+	end
 	
 	title.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -601,15 +609,7 @@ local function createTPGUI()
 		end
 	end)
 	
-	UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			if dragConn then
-				dragConn:Disconnect()
-				dragConn = nil
-			end
-			dragInput, dragStart, startPos = nil, nil, nil
-		end
-	end)
+	UserInputService.InputEnded:Connect(onInputEnded)
 
 	local closeBtn = Instance.new("TextButton")
 	closeBtn.Size = UDim2.new(0, 25, 0, 25)
@@ -622,6 +622,7 @@ local function createTPGUI()
 	closeBtn.Parent = title
 	closeBtn.Activated:Connect(function()
 		toggleFeature("TP", false)
+		UserInputService.InputEnded:Disconnect(onInputEnded)
 	end)
 
 	local playerList = Instance.new("ScrollingFrame")
@@ -633,17 +634,17 @@ local function createTPGUI()
 	local listLayout = Instance.new("UIListLayout")
 	listLayout.FillDirection = Enum.FillDirection.Vertical
 	listLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	listLayout.Padding = UDim.new(0, 5)
+	listLayout.Padding = UDim.new(极速0, 5)
 	listLayout.Parent = playerList
 
 	local function refreshPlayerList()
 		for _, child in ipairs(playerList:GetChildren()) do
 			if child:IsA("TextButton") then child:Destroy() end
 		end
-		for _, p in ipairs(Players:GetPlayers()) do
+		for _, p in ipairs(Players:极速GetPlayers()) do
 			if p ~= LocalPlayer then
 				local tpBtn = Instance.new("TextButton")
-				tpBtn.Size = UDim2.new(1, 0, 0, 30)
+				t极速pBtn.Size = UDim2.new(1, 0, 0, 30)
 				tpBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 				tpBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 				tpBtn.Text = p.Name
@@ -680,6 +681,7 @@ local function createMainGUI()
 	gui.Parent = PlayerGui
 	gui.ZIndexBehavior = Enum.ZIndexBehavior.Global
 	gui.DisplayOrder = 9999
+	gui.Enabled = false -- 默认禁用
 
 	local mainFrame = Instance.new("Frame")
 	mainFrame.Name = "Main"
@@ -695,7 +697,7 @@ local function createMainGUI()
 	stroke.Color = Color3.fromRGB(30, 30, 30)
 	stroke.Transparency = 0.25
 
-	local title = Instance.new("TextLabel")
+	local title = Instance.new("极速TextLabel")
 	title.Name = "Title"
 	title.Size = UDim2.new(1, 0, 0, 30)
 	title.BackgroundColor3 = Color3.fromRGB(36, 36, 36)
@@ -707,6 +709,13 @@ local function createMainGUI()
 	-- 拖动功能（双端支持）
 	local dragConn = nil
 	local dragInput, dragStart, startPos
+	
+	local function onInputEnded(input)
+		if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) and dragConn then
+			dragConn:Disconnect()
+			dragConn = nil
+		end
+	end
 	
 	title.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -722,21 +731,13 @@ local function createMainGUI()
 		end
 	end)
 	
-	UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			if dragConn then
-				dragConn:Disconnect()
-				dragConn = nil
-			end
-			dragInput, dragStart, startPos = nil, nil, nil
-		end
-	end)
+	UserInputService.InputEnded:Connect(onInputEnded)
 
 	local closeBtn = Instance.new("TextButton")
 	closeBtn.Name = "CloseBtn"
 	closeBtn.Size = UDim2.new(0, 25, 0, 25)
 	closeBtn.Position = UDim2.new(1, -28, 0, 3)
-	closeBtn.AnchorPoint = Vector2.new(1, 0)
+	closeBtn.AnchorPoint = Vector极速2.new(1, 0)
 	closeBtn.BackgroundColor3 = Color3.fromRGB(200, 20, 20)
 	closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 	closeBtn.Font = Enum.Font.GothamSemibold
@@ -744,20 +745,21 @@ local function createMainGUI()
 	closeBtn.Parent = title
 	closeBtn.Activated:Connect(function()
 		IsGUIVisible = false
-		mainFrame.Visible = false
+		gui.Enabled = false
+		UserInputService.InputEnded:Disconnect(onInputEnded)
 	end)
 
 	local tabList = Instance.new("ScrollingFrame")
 	tabList.Name = "TabList"
 	tabList.Size = UDim2.new(0, 100, 1, -30)
-	tabList.Position = UDim2.new(0, 0, 0, 30)
-	tabList.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+	tabList.Position = UDim2.new(0, 0, 0极速, 30)
+	tabList.BackgroundColor3 = Color3.fromRGB(30极速, 30, 30)
 	tabList.Parent = mainFrame
 	local tabListLayout = Instance.new("UIListLayout")
 	tabListLayout.Padding = UDim.new(0, 5)
 	tabListLayout.Parent = tabList
 
-	local contentFrame = Instance.new("Frame")
+	local contentFrame = Instance.new("极速Frame")
 	contentFrame.Name = "ContentFrame"
 	contentFrame.Size = UDim2.new(1, -100, 1, -30)
 	contentFrame.Position = UDim2.new(0, 100, 0, 30)
@@ -806,7 +808,7 @@ local function createMainGUI()
 			local buttonFrame = Instance.new("Frame")
 			buttonFrame.Size = UDim2.new(1, 0, 0, 40)
 			buttonFrame.BackgroundTransparency = 1
-			buttonFrame.Parent = tabContent
+		极速	buttonFrame.Parent = tabContent
 			
 			local featureBtn = Instance.new("TextButton")
 			featureBtn.Name = featureName
@@ -834,7 +836,7 @@ local function createMainGUI()
 			local settingName = ""
 			if featureName == "Speed" then settingName = "Speed" end
 			if featureName == "HighJump" then settingName = "JumpPower" end
-			if featureName == "Fly" then settingName = "FlySpeed" end
+			if featureName == "Fly" then settingName = "FlySpeed极速" end
 			if featureName == "Gravity" then settingName = "Gravity" end
 			if featureName == "Hitbox" then settingName = "HitboxScale" end
 			
@@ -872,12 +874,12 @@ local function createMainGUI()
 				elseif featureName == "KeepY" then contentText = "启用后将锁定角色的Y轴高度，防止掉落。"
 				elseif featureName == "Fly" then contentText = "启用后可自由飞行，WASD移动，空格上升，Shift下降。输入框可设置飞行速度 (1-300)。" settingName = "FlySpeed"
 				elseif featureName == "AirJump" then contentText = "启用后可以在空中无限次跳跃。"
-				elseif featureName == "WallClimb" then contentText = "启用后靠近墙壁时会自动攀爬。"
+				elseif featureName == "WallClimb极速" then contentText = "启用后靠近墙壁时会自动攀爬。"
 				elseif featureName == "Sprint" then contentText = "启用后角色的行走速度会提升到疾跑速度。"
 				elseif featureName == "Lowhop" then contentText = "自动进行超低跳跃，通常用于加速。"
 				elseif featureName == "Bhop" then contentText = "基于跳跃的加速功能。通常用于在平地上快速移动。"
-				elseif featureName == "NightVision" then contentText = "启用后游戏亮度将最大化，可以清晰看到黑暗区域。"
-				elseif featureName == "NoKnockBack" then contentText = "防止玩家被外力击退，如物理攻击或爆炸。"
+				elseif featureName == "NightVision" then contentText = "启用后游戏亮度将最大化，可以清晰看到黑暗区域极速。"
+				else极速if featureName == "NoKnockBack" then contentText = "防止玩家被外力击退，如物理攻击或爆炸。"
 				elseif featureName == "NoSlow" then contentText = "防止玩家被减速效果影响，始终保持正常移动速度。"
 				elseif featureName == "ESP" then contentText = "启用后将高亮显示其他玩家，即使隔着障碍物也能看到。"
 				elseif featureName == "WalkFling" then contentText = "利用移动时的物理惯性将周围玩家甩飞。"
@@ -909,8 +911,6 @@ local function createMainGUI()
 		end)
 	end
 	
-	mainFrame.Visible = false
-	
 	task.spawn(function()
 		task.wait(0.1)
 		if tabList:FindFirstChildOfClass("TextButton") then
@@ -934,35 +934,38 @@ local function createMobileButton()
 	button.Parent = PlayerGui
 	Instance.new("UICorner", button).CornerRadius = UDim.new(0, 10)
 	
-	local dragToggle = false
+	local dragConn = nil
 	local dragInput, dragStart, startPos
 	
+	local function onInputEnded(input)
+		if (input.UserInputType == Enum.UserInputType.Touch) and dragConn then
+			dragConn:Disconnect()
+			dragConn = nil
+		end
+	end
+	
 	button.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.Touch and not IsGUIVisible then
-			dragToggle = true
+		if input.UserInputType == Enum.UserInputType.Touch then
 			dragInput = input
 			dragStart = input.Position
 			startPos = button.Position
+			dragConn = UserInputService.InputChanged:Connect(function(input2)
+				if input2 == dragInput then
+					local delta = input2.Position - dragStart
+					button.Position = startPos + UDim2.new(0, delta.X, 0, delta.Y)
+				end
+			end)
 		end
 	end)
 	
-	UserInputService.InputChanged:Connect(function(input)
-		if input == dragInput and dragToggle then
-			local delta = input.Position - dragStart
-			button.Position = startPos + UDim2.new(0, delta.X, 0, delta.Y)
-		end
-	end)
-	
-	UserInputService.InputEnded:Connect(function(input)
-		if input == dragInput and dragToggle then
-			dragToggle = false
-		end
-	end)
+	UserInputService.InputEnded:Connect(onInputEnded)
 	
 	button.Activated:Connect(function()
 		IsGUIVisible = not IsGUIVisible
-		MainGUI.Visible = IsGUIVisible
+		MainGUI.Enabled = IsGUIVisible
 	end)
+	
+	return button
 end
 
 -- 初始化函数
@@ -971,7 +974,7 @@ local function init()
 	MainGUI = createMainGUI()
 	
 	if IsMobile then
-		createMobileButton()
+		MobileButton = createMobileButton()
 		StarterGui:SetCore("ControlModule", nil)
 		notify("移动设备模式已启用。", 2)
 	else
@@ -998,7 +1001,7 @@ local function init()
 		if gameProcessed or BindingInProgress then return end
 		if input.KeyCode == Keybinds.ClickGUI then
 			IsGUIVisible = not IsGUIVisible
-			MainGUI.Visible = IsGUIVisible
+			MainGUI.Enabled = IsGUIVisible
 			if IsGUIVisible then
 				if not IsMobile and UserInputService.MouseBehavior ~= Enum.MouseBehavior.Default then
 					MouseLockState = UserInputService.MouseBehavior
