@@ -474,6 +474,15 @@ local FeatureHandlers = {
     },
 }
 
+-- 脚本加载时等待2秒并关闭所有功能
+task.wait(2)
+for feature, handler in pairs(FeatureHandlers) do
+    if handler.disable then
+        pcall(handler.disable)
+    end
+end
+notify("初始化完成", "所有功能已重置", 2)
+
 -- 欢迎弹窗
 local Confirmed = false
 WindUI:Popup({
@@ -533,6 +542,23 @@ Tabs.Main:Paragraph({
     Desc = "一个高效、美观的游戏界面工具集",
 })
 
+-- 添加图片元素
+Tabs.Main:Element({
+    Type = "Image",
+    Image = "https://raw.githubusercontent.com/DUKECCB1337/PigGod/839e3ef641e2a8f3a56d7fd96352d87174dbec0c/1756457861236.jpg",
+    Size = UDim2.new(0, 42, 0, 42),
+    Title = "主标志",
+    Desc = "皮革尬的脚盆官方标志"
+})
+
+Tabs.Main:Element({
+    Type = "Thumbnail",
+    Image = "https://raw.githubusercontent.com/DUKECCB1337/PigGod/refs/heads/main/1755512636061.jpeg",
+    Size = UDim2.new(0, 120, 0, 120),
+    Title = "缩略图",
+    Desc = "皮革尬的脚盆特色缩略图"
+})
+
 -- 添加一个简单的设置保存按钮
 Tabs.Main:Button({
     Title = "保存设置",
@@ -541,6 +567,49 @@ Tabs.Main:Button({
         local settings = HttpService:JSONEncode(FeatureSettings)
         -- 在实际应用中，这里应该使用DataStoreService
         notify("设置已保存", "下次启动时将应用您的设置", 2)
+    end
+})
+
+-- 添加其他功能按钮
+Tabs.Main:Button({
+    Title = "快速开始",
+    Desc = "一键启用推荐配置",
+    Callback = function()
+        -- 启用推荐功能
+        FeatureStates.Fly = true
+        FeatureHandlers.Fly:enable()
+        FeatureStates.Speed = true
+        FeatureHandlers.Speed:enable()
+        FeatureStates.ESP = true
+        FeatureHandlers.ESP:enable()
+        
+        notify("快速开始已启用", "飞行、加速和ESP功能已开启", 3)
+    end
+})
+
+Tabs.Main:Button({
+    Title = "重置设置",
+    Desc = "恢复所有默认设置",
+    Callback = function()
+        -- 重置所有功能状态
+        for feature, state in pairs(FeatureStates) do
+            if state and FeatureHandlers[feature] and FeatureHandlers[feature].disable then
+                FeatureHandlers[feature]:disable()
+            end
+            FeatureStates[feature] = false
+        end
+        
+        -- 重置设置值
+        FeatureSettings = {
+            Speed = 30,
+            JumpPower = 100,
+            FlySpeed = 50,
+            SprintSpeed = 40,
+            Gravity = 196.2,
+            HitboxScale = 1.5,
+        }
+        
+        notify("设置已重置", "所有功能已恢复默认状态", 3)
     end
 })
 
@@ -846,25 +915,13 @@ WindUI:Notify({
     end
 })
 
--- 窗口关闭事件
+-- 窗口关闭事件 - 不再关闭所有功能
 Window:OnClose(function()
     WindUI:Notify({
         Title = "界面已关闭",
-        Desc = "所有功能已停用",
+        Desc = "功能保持当前状态",
         Duration = 3
     })
-    
-    -- 清理所有功能
-    for feature, state in pairs(FeatureStates) do
-        if state and FeatureHandlers[feature] and FeatureHandlers[feature].disable then
-            FeatureHandlers[feature]:disable()
-        end
-    end
-    
-    -- 断开所有连接
-    for _, connection in pairs(Connections) do
-        connection:Disconnect()
-    end
 end)
 
 -- 游戏关闭时清理
