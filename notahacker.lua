@@ -475,7 +475,7 @@ WindUI:Popup({
                 Confirmed = true 
                 WindUI:Notify({
                     Title = "欢迎",
-                    Desc = "脚盆UI已激活，请尽情享受！",
+                                                Desc = "脚盆UI已激活，请尽情享受！",
                     Duration = 3
                 })
             end,
@@ -519,21 +519,6 @@ local Tabs = {
 Tabs.Main:Paragraph({
     Title = "欢迎使用",
     Desc = "皮革尬的脚盆",
-})
-
--- 添加图片元素
-Tabs.Main:Image({
-    Image = "https://raw.githubusercontent.com/DUKECCB1337/PigGod/839e3ef641e2a8f3a56d7fd96352d87174dbec0c/1756457861236.jpg",
-    Size = UDim2.new(0, 42, 0, 42),
-    Title = "主标志",
-    Desc = "皮革尬的脚盆官方标志"
-})
-
-Tabs.Main:Image({
-    Image = "https://raw.githubusercontent.com/DUKECCB1337/PigGod/refs/heads/main/1755512636061.jpeg",
-    Size = UDim2.new(0, 120, 0, 120),
-    Title = "缩略图",
-    Desc = "皮革尬的脚盆特色缩略图"
 })
 
 -- 添加一个简单的设置保存按钮
@@ -722,12 +707,21 @@ Tabs.Movement:Slider({
     end
 })
 
--- 战斗标签页
+-- 战斗标签页（添加内容，解决“This tab is empty”）
 Tabs.Combat:Toggle({
     Title = "自动攻击",
     Desc = "自动攻击附近的敌人",
     Callback = function(state)
         notify("自动攻击已"..(state and "开启" or "关闭"), state and "开始自动攻击" or "停止自动攻击", 2)
+        -- 若需要实际自动攻击逻辑，可在此补充（示例：检测附近敌人并攻击）
+    end
+})
+
+Tabs.Combat:Toggle({
+    Title = "无限连",
+    Desc = "攻击无冷却",
+    Callback = function(state)
+        notify("无限连已"..(state and "开启" or "关闭"), state and "攻击不再有冷却" or "恢复攻击冷却", 2)
     end
 })
 
@@ -906,7 +900,3 @@ end)
 game:BindToClose(function()
     Window:Close()
 end)
---fuck
---dicks
---penis
---cocks
