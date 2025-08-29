@@ -58,29 +58,23 @@ local Humanoid = Character:WaitForChild("Humanoid")
 local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
 local Camera = Workspace.CurrentCamera
 
--- 全局功能状态
-local FeatureStates = {
-    NoClip = false,
-    NightVision = false,
-    ESP = false,
-    WalkFling = false,
-    WallClimb = false,
-    Speed = false,
-    HighJump = false,
-    KeepY = false,
-    TP = false,
-    ClickTP = false,
-    Fly = false,
-    AirJump = false,
-    AntiWalkFling = false,
-    Sprint = false,
-    Lowhop = false,
-    Gravity = false,
-    NoKnockBack = false,
-    NoSlow = false,
-    Bhop = false,
-    Hitbox = false,
+-- 功能分类映射
+local CategoryFeatureMap = {
+    Movement = {"NoClip","Speed","HighJump","KeepY","Fly","AirJump","WallClimb","Sprint","Lowhop","Bhop"},
+    Visual = {"NightVision","ESP"},
+    Combat = {"Hitbox"},
+    Exploit = {"WalkFling","TP","ClickTP"},
+    Misc = {"Gravity"},
+    Player = {"AntiWalkFling","NoKnockBack","NoSlow"}
 }
+
+-- 全局功能状态 - 所有功能默认关闭
+local FeatureStates = {}
+for _, features in pairs(CategoryFeatureMap) do
+    for _, feature in ipairs(features) do
+        FeatureStates[feature] = false
+    end
+end
 
 -- 功能参数
 local FeatureSettings = {
@@ -97,6 +91,9 @@ local Keybinds = {
     OpenGUI = Enum.KeyCode.RightShift,
 }
 
+-- 连接管理
+local Connections = {}
+
 -- 安全等待核心GUI元素 - 解决 "TopBarApp" 错误
 local topBarApp = SafeWaitForChild(CoreGui, "TopBarApp")
 if not topBarApp then
@@ -108,6 +105,21 @@ LocalPlayer.CharacterAdded:Connect(function(newChar)
     Character = newChar
     Humanoid = SafeWaitForChild(newChar, "Humanoid") or newChar:WaitForChild("Humanoid")
     HumanoidRootPart = SafeWaitForChild(newChar, "HumanoidRootPart") or newChar:WaitForChild("HumanoidRootPart")
+    
+    -- 仅重新应用已启用的功能设置
+    if FeatureStates.Speed then
+        Humanoid.WalkSpeed = FeatureSettings.Speed
+    elseif FeatureStates.Sprint then
+        Humanoid.WalkSpeed = FeatureSettings.SprintSpeed
+    else
+        Humanoid.WalkSpeed = 16
+    end
+    
+    if FeatureStates.HighJump then
+        Humanoid.JumpPower = FeatureSettings.JumpPower
+    else
+        Humanoid.JumpPower = 50
+    end
 end)
 
 -- 通知系统
@@ -124,8 +136,7 @@ local function notify(text, time)
     end
 end
 
--- 功能处理函数 (同上，保持不变)
--- ... [保留原有功能处理函数] ...
+-- 功能处理函数
 local FeatureHandlers = {
     NoClip = {
         enable = function()
@@ -270,7 +281,7 @@ local FeatureHandlers = {
         end,
         disable = function()
             if Humanoid then
-                Humanoid.WalkSpeed = (FeatureStates.Sprint and FeatureSettings.SprintSpeed) or 16
+                Humanoid.WalkSpeed = 16
             end
         end,
     },
@@ -279,7 +290,7 @@ local FeatureHandlers = {
         enable = function()
             if Humanoid then
                 Humanoid.JumpPower = FeatureSettings.JumpPower
-            end
+           end
         end,
         disable = function()
             if Humanoid then
@@ -391,7 +402,7 @@ local FeatureHandlers = {
                     end
                 end
             end)
-        end,
+       end,
         disable = function()
             if Connections.AirJump then
                 Connections.AirJump:Disconnect()
@@ -431,7 +442,7 @@ local FeatureHandlers = {
         end,
         disable = function()
             if Humanoid then
-                Humanoid.WalkSpeed = (FeatureStates.Speed and FeatureSettings.Speed) or 16
+                Humanoid.WalkSpeed = 16
             end
         end,
     },
@@ -517,6 +528,37 @@ local FeatureHandlers = {
             end
         end,
     },
+    
+    Hitbox = {
+        enable = function()
+            Connections.Hitbox = RunService.Heartbeat:Connect(function()
+                for _, plr in ipairs(Players:GetPlayers()) do
+                    if plr ~= LocalPlayer and plr.Character then
+                        for _, part in ipairs(plr.Character:GetDescendants()) do
+                            if part:IsA("BasePart") then
+                                part.Size = part.Size * FeatureSettings.HitboxScale
+                            end
+                        end
+                    end
+                end
+            end)
+        end,
+        disable = function()
+            if Connections.Hitbox then
+                Connections.Hitbox:Disconnect()
+                Connections.Hitbox = nil
+            end
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer and plr.Character then
+                    for _, part in ipairs(plr.Character:GetDescendants()) do
+                        if part:IsA("BasePart") then
+                            part.Size = part.Size / FeatureSettings.HitboxScale
+                        end
+                    end
+                end
+            end
+        end,
+    },
 }
 
 -- 功能切换函数
@@ -543,9 +585,9 @@ local function toggleFeature(featureName, state)
     end
     
     FeatureStates[featureName] = newState
-    local handler = FeatureHandlers[featureName]
     
     pcall(function()
+        local handler = FeatureHandlers[featureName]
         if handler then
             if newState then
                 if handler.enable then handler.enable() end
@@ -582,8 +624,96 @@ local function createPlayerList()
     return players
 end
 
+-- 创建TP GUI
+local TP_GUI = nil
+local function createTPGUI()
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "TP_GUI"
+    gui.Parent = PlayerGui
+    gui.Enabled = false
+    
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 250, 0, 400)
+    frame.Position = UDim2.new(1, -260, 0.5, -200)
+    frame.AnchorPoint = Vector2.new(1, 0.5)
+    frame.BackgroundColor3 = Color3.fromRGB(26, 26, 26)
+    frame.Parent = gui
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 8)
+    
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, 0, 0, 30)
+    title.BackgroundColor3 = Color3.fromRGB(36, 36, 36)
+    title.Text = "传送玩家"
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.TextScaled = true
+    title.Font = Enum.Font.GothamSemibold
+    title.Parent = frame
+    
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(0, 25, 0, 25)
+    closeBtn.Position = UDim2.new(1, -28, 0, 3)
+    closeBtn.AnchorPoint = Vector2.new(1, 0)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(200, 20, 20)
+    closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeBtn.Font = Enum.Font.GothamSemibold
+    closeBtn.Text = "X"
+    closeBtn.Parent = title
+    closeBtn.Activated:Connect(function()
+        toggleFeature("TP", false)
+    end)
+    
+    local playerList = Instance.new("ScrollingFrame")
+    playerList.Size = UDim2.new(1, -10, 1, -40)
+    playerList.Position = UDim2.new(0, 5, 0, 35)
+    playerList.BackgroundTransparency = 1
+    playerList.Parent = frame
+    local listLayout = Instance.new("UIListLayout")
+    listLayout.FillDirection = Enum.FillDirection.Vertical
+    listLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    listLayout.Padding = UDim.new(0, 5)
+    listLayout.Parent = playerList
+    
+    local function refreshPlayerList()
+        for _, child in ipairs(playerList:GetChildren()) do
+            if child:IsA("TextButton") then child:Destroy() end
+        end
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer then
+                local tpBtn = Instance.new("TextButton")
+                tpBtn.Size = UDim2.new(1, 0, 0, 30)
+                tpBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+                tpBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+                tpBtn.Text = p.Name
+                tpBtn.TextScaled = true
+                tpBtn.Font = Enum.Font.GothamSemibold
+                tpBtn.Parent = playerList
+                tpBtn.Activated:Connect(function()
+                    local targetChar = p.Character
+                    if not targetChar or not targetChar:FindFirstChild("HumanoidRootPart") then
+                        notify("无法找到该玩家角色", 2)
+                        return
+                    end
+                    if HumanoidRootPart then
+                        HumanoidRootPart.CFrame = targetChar.HumanoidRootPart.CFrame + Vector3.new(0, 5, 0)
+                        notify("已传送到 "..p.Name, 2)
+                    end
+                end)
+            end
+        end
+    end
+    
+    Players.PlayerAdded:Connect(refreshPlayerList)
+    Players.PlayerRemoving:Connect(refreshPlayerList)
+    refreshPlayerList()
+    
+    return gui
+end
+
 -- 主程序入口
 local function main()
+    -- 创建TP GUI
+    TP_GUI = createTPGUI()
+    
     -- Test
     local Confirmed = false
 
@@ -623,7 +753,7 @@ local function main()
     local Tabs = {
         Main = Window:Tab({ Title = "Main", Icon = "rbxassetid://6026568198" }),
         Movement = Window:Tab({ Title = "Movement", Icon = "rbxassetid://94462465090724" }),
-        Visual = Window:Tab({ Title = "Visual", Icon = "eye" }), -- 新增视觉分类
+        Visual = Window:Tab({ Title = "Visual", Icon = "eye" }),
         Combat = Window:Tab({ Title = "Combat", Icon = "swords" }),
         Player = Window:Tab({ Title = "Player", Icon = "user" }),
         Misc = Window:Tab({ Title = "Misc", Icon = "settings" }),
@@ -638,147 +768,104 @@ local function main()
         Desc = "皮革尬的脚盆v1.0",
     })
 
-    -- Movement 标签页
-    Tabs.Movement:Toggle({
-        Title = "NoClip",
-        Description = "穿墙模式",
-        Callback = function(state)
-            toggleFeature("NoClip", state)
-        end
-    })
-
-    Tabs.Movement:Toggle({
-        Title = "Speed",
-        Description = "增加移动速度",
-        Callback = function(state)
-            toggleFeature("Speed", state)
-        end
-    })
-
-    Tabs.Movement:Slider({
-        Title = "Speed Value",
-        Min = 16,
-        Max = 500,
-        Default = FeatureSettings.Speed,
-        Callback = function(value)
-            FeatureSettings.Speed = value
-            if FeatureStates.Speed then
-                Humanoid.WalkSpeed = value
+    -- 根据功能分类映射动态创建UI元素
+    for category, features in pairs(CategoryFeatureMap) do
+        local tab = Tabs[category]
+        if tab then
+            for _, feature in ipairs(features) do
+                -- 添加开关控制
+                tab:Toggle({
+                    Title = feature,
+                    Description = feature .. " 功能开关",
+                    Callback = function(state)
+                        toggleFeature(feature, state)
+                    end
+                })
+                
+                -- 为特定功能添加滑块
+                if feature == "Speed" then
+                    tab:Slider({
+                        Title = "移动速度",
+                        Min = 16,
+                        Max = 200,
+                        Default = FeatureSettings.Speed,
+                        Callback = function(value)
+                            FeatureSettings.Speed = value
+                            if FeatureStates.Speed then
+                                Humanoid.WalkSpeed = value
+                            end
+                        end
+                    })
+                elseif feature == "HighJump" then
+                    tab:Slider({
+                        Title = "跳跃高度",
+                        Min = 50,
+                        Max = 500,
+                        Default = FeatureSettings.JumpPower,
+                        Callback = function(value)
+                            FeatureSettings.JumpPower = value
+                            if FeatureStates.HighJump then
+                                Humanoid.JumpPower = value
+                            end
+                        end
+                    })
+                elseif feature == "Fly" then
+                    tab:Slider({
+                        Title = "飞行速度",
+                        Min = 10,
+                        Max = 300,
+                        Default = FeatureSettings.FlySpeed,
+                        Callback = function(value)
+                            FeatureSettings.FlySpeed = value
+                        end
+                    })
+                elseif feature == "Sprint" then
+                    tab:Slider({
+                        Title = "疾跑速度",
+                        Min = 16,
+                        Max = 200,
+                        Default = FeatureSettings.SprintSpeed,
+                        Callback = function(value)
+                            FeatureSettings.SprintSpeed = value
+                            if FeatureStates.Sprint then
+                                Humanoid.WalkSpeed = value
+                            end
+                        end
+                    })
+                elseif feature == "Gravity" then
+                    tab:Slider({
+                        Title = "重力设置",
+                        Min = 0,
+                        Max = 300,
+                        Default = FeatureSettings.Gravity,
+                        Callback = function(value)
+                            FeatureSettings.Gravity = value
+                            if FeatureStates.Gravity then
+                                Workspace.Gravity = value
+                            end
+                        end
+                    })
+                elseif feature == "Hitbox" then
+                    tab:Slider({
+                        Title = "碰撞箱大小",
+                        Min = 0.5,
+                        Max = 5,
+                        Default = FeatureSettings.HitboxScale,
+                        Callback = function(value)
+                            FeatureSettings.HitboxScale = value
+                        end
+                    })
+                end
             end
         end
-    })
+    end
 
-    Tabs.Movement:Toggle({
-        Title = "Fly",
-        Description = "飞行模式",
-        Callback = function(state)
-            toggleFeature("Fly", state)
-        end
-    })
-
-    Tabs.Movement:Slider({
-        Title = "Fly Speed",
-        Min = 10,
-        Max = 300,
-        Default = FeatureSettings.FlySpeed,
-        Callback = function(value)
-            FeatureSettings.FlySpeed = value
-        end
-    })
-
-    -- Visual 标签页 (新增)
-    Tabs.Visual:Toggle({
-        Title = "Night Vision",
-        Description = "夜视模式",
-        Callback = function(state)
-            toggleFeature("NightVision", state)
-        end
-    })
-
-    Tabs.Visual:Toggle({
-        Title = "ESP",
-        Description = "显示玩家轮廓",
-        Callback = function(state)
-            toggleFeature("ESP", state)
-        end
-    })
-
-    -- Combat 标签页
-    Tabs.Combat:Toggle({
-        Title = "Hitbox",
-        Description = "调整碰撞箱大小",
-        Callback = function(state)
-            toggleFeature("Hitbox", state)
-        end
-    })
-
-    Tabs.Combat:Slider({
-        Title = "Hitbox Scale",
-        Min = 0.5,
-        Max = 5,
-        Default = FeatureSettings.HitboxScale,
-        Callback = function(value)
-            FeatureSettings.HitboxScale = value
-        end
-    })
-
-    -- Player 标签页
-    Tabs.Player:Toggle({
-        Title = "High Jump",
-        Description = "高跳模式",
-        Callback = function(state)
-            toggleFeature("HighJump", state)
-        end
-    })
-
-    Tabs.Player:Slider({
-        Title = "Jump Power",
-        Min = 50,
-        Max = 500,
-        Default = FeatureSettings.JumpPower,
-        Callback = function(value)
-            FeatureSettings.JumpPower = value
-            if FeatureStates.HighJump then
-                Humanoid.JumpPower = value
-            end
-        end
-    })
-
-    -- Misc 标签页
-    Tabs.Misc:Toggle({
-        Title = "Anti Fling",
-        Description = "防止被甩飞",
-        Callback = function(state)
-            toggleFeature("AntiWalkFling", state)
-        end
-    })
-
-    Tabs.Misc:Toggle({
-        Title = "No Knockback",
-        Description = "无击退效果",
-        Callback = function(state)
-            toggleFeature("NoKnockBack", state)
-        end
-    })
-
-    -- Exploit 标签页
-    Tabs.Exploit:Toggle({
-        Title = "Click TP",
-        Description = "点击传送",
-        Callback = function(state)
-            toggleFeature("ClickTP", state)
-        end
-    })
-
+    -- 添加额外按钮
     Tabs.Exploit:Button({
-        Title = "Teleport to Player",
-        Description = "传送到玩家",
+        Title = "传送玩家",
+        Description = "打开玩家列表",
         Callback = function()
-            WindUI:Popup({
-                Title = "选择玩家",
-                Content = "选择要传送到的玩家",
-                Buttons = createPlayerList()
-            })
+            toggleFeature("TP", true)
         end
     })
 
