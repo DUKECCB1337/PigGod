@@ -1,5 +1,12 @@
 -- 加载WindUI库
-local WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Guo61/Cat-/refs/heads/main/main.lua"))()
+local success, WindUI = pcall(function()
+    return loadstring(game:HttpGet("https://raw.githubusercontent.com/Guo61/Cat-/refs/heads/main/main.lua"))()
+end)
+if not success then
+    warn("WindUI库加载失败：" .. tostring(WindUI))
+    game.StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.All, true)
+    error("请检查WindUI链接是否有效，程序已终止")
+end
 
 -- 添加必要的服务引用
 local RunService = game:GetService("RunService")
@@ -147,6 +154,7 @@ local FeatureHandlers = {
 
     WalkFling = {
         enable = function()
+            if not Humanoid or not HumanoidRootPart then return end
             Connections.WalkFling = RunService.Stepped:Connect(function()
                 if Humanoid and HumanoidRootPart and Humanoid.MoveDirection.Magnitude > 0 then
                     local force = Humanoid.MoveDirection * 1000000 + Vector3.new(0, 1000000, 0)
@@ -171,6 +179,7 @@ local FeatureHandlers = {
 
     WallClimb = {
         enable = function()
+            if not Humanoid or not HumanoidRootPart then return end
             Connections.WallClimb = RunService.Stepped:Connect(function()
                 if Humanoid and HumanoidRootPart then
                     local raycastParams = RaycastParams.new()
@@ -195,41 +204,35 @@ local FeatureHandlers = {
 
     Speed = {
         enable = function()
-            if Humanoid then
-                Humanoid.WalkSpeed = FeatureSettings.Speed
-            end
+            if not Humanoid then return end
+            Humanoid.WalkSpeed = FeatureSettings.Speed
         end,
         disable = function()
-            if Humanoid then
-                Humanoid.WalkSpeed = (FeatureStates.Sprint and FeatureSettings.SprintSpeed) or 16
-            end
+            if not Humanoid then return end
+            Humanoid.WalkSpeed = (FeatureStates.Sprint and FeatureSettings.SprintSpeed) or 16
         end,
     },
 
     HighJump = {
         enable = function()
-            if Humanoid then
-                Humanoid.JumpPower = FeatureSettings.JumpPower
-            end
+            if not Humanoid then return end
+            Humanoid.JumpPower = FeatureSettings.JumpPower
         end,
         disable = function()
-            if Humanoid then
-                Humanoid.JumpPower = 50
-            end
+            if not Humanoid then return end
+            Humanoid.JumpPower = 50
         end,
     },
 
     KeepY = {
         originalY = 0,
         enable = function()
-            if HumanoidRootPart then
-                FeatureHandlers.KeepY.originalY = HumanoidRootPart.Position.Y
-            end
+            if not HumanoidRootPart then return end
+            FeatureHandlers.KeepY.originalY = HumanoidRootPart.Position.Y
             Connections.KeepY = RunService.Stepped:Connect(function()
-                if HumanoidRootPart then
-                    local pos = HumanoidRootPart.Position
-                    HumanoidRootPart.CFrame = CFrame.new(pos.X, FeatureHandlers.KeepY.originalY, pos.Z)
-                end
+                if not HumanoidRootPart then return end
+                local pos = HumanoidRootPart.Position
+                HumanoidRootPart.CFrame = CFrame.new(pos.X, FeatureHandlers.KeepY.originalY, pos.Z)
             end)
         end,
         disable = function()
@@ -255,6 +258,7 @@ local FeatureHandlers = {
 
     ClickTP = {
         enable = function()
+            if not Camera or not HumanoidRootPart then return end
             Connections.ClickTP = UserInputService.InputBegan:Connect(function(input, gameProcessed)
                 if gameProcessed or input.UserInputType ~= Enum.UserInputType.MouseButton1 or not Camera or not HumanoidRootPart then
                     return
@@ -283,21 +287,20 @@ local FeatureHandlers = {
             if not Humanoid or not HumanoidRootPart then return end
             Humanoid.PlatformStand = true
             Connections.Fly = RunService.Stepped:Connect(function()
-                if HumanoidRootPart and Humanoid then
-                    local moveDirection = Humanoid.MoveDirection
-                    local flyVelocity = Vector3.new(0, 0, 0)
-                    if moveDirection.Magnitude > 0 then
-                        flyVelocity = HumanoidRootPart.CFrame.LookVector * moveDirection.Z * FeatureSettings.FlySpeed +
-                            HumanoidRootPart.CFrame.RightVector * moveDirection.X * FeatureSettings.FlySpeed
-                    end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-                        flyVelocity = flyVelocity + Vector3.new(0, FeatureSettings.FlySpeed, 0)
-                    end
-                    if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
-                        flyVelocity = flyVelocity - Vector3.new(0, FeatureSettings.FlySpeed, 0)
-                    end
-                    HumanoidRootPart.CFrame = HumanoidRootPart.CFrame + flyVelocity * (1/60)
+                if not HumanoidRootPart or not Humanoid then return end
+                local moveDirection = Humanoid.MoveDirection
+                local flyVelocity = Vector3.new(0, 0, 0)
+                if moveDirection.Magnitude > 0 then
+                    flyVelocity = HumanoidRootPart.CFrame.LookVector * moveDirection.Z * FeatureSettings.FlySpeed +
+                        HumanoidRootPart.CFrame.RightVector * moveDirection.X * FeatureSettings.FlySpeed
                 end
+                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+                    flyVelocity = flyVelocity + Vector3.new(0, FeatureSettings.FlySpeed, 0)
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+                    flyVelocity = flyVelocity - Vector3.new(0, FeatureSettings.FlySpeed, 0)
+                end
+                HumanoidRootPart.CFrame = HumanoidRootPart.CFrame + flyVelocity * (1/60)
             end)
         end,
         disable = function()
@@ -336,14 +339,13 @@ local FeatureHandlers = {
         maxSafeVelocity = 80,
         enable = function()
             Connections.AntiWalkFling = RunService.Stepped:Connect(function()
-                if HumanoidRootPart then
-                    local currentVelocity = HumanoidRootPart.Velocity
-                    if (currentVelocity - FeatureHandlers.AntiWalkFling.lastVelocity).Magnitude > FeatureHandlers.AntiWalkFling.maxSafeVelocity then
-                        HumanoidRootPart.Velocity = FeatureHandlers.AntiWalkFling.lastVelocity
-                        notify("防甩飞已启动！", 1)
-                    end
-                    FeatureHandlers.AntiWalkFling.lastVelocity = currentVelocity
+                if not HumanoidRootPart then return end
+                local currentVelocity = HumanoidRootPart.Velocity
+                if (currentVelocity - FeatureHandlers.AntiWalkFling.lastVelocity).Magnitude > FeatureHandlers.AntiWalkFling.maxSafeVelocity then
+                    HumanoidRootPart.Velocity = FeatureHandlers.AntiWalkFling.lastVelocity
+                    notify("防甩飞已启动！", 1)
                 end
+                FeatureHandlers.AntiWalkFling.lastVelocity = currentVelocity
             end)
         end,
         disable = function()
@@ -356,25 +358,22 @@ local FeatureHandlers = {
 
     Sprint = {
         enable = function()
-            if Humanoid then
-                Humanoid.WalkSpeed = FeatureSettings.SprintSpeed
-            end
+            if not Humanoid then return end
+            Humanoid.WalkSpeed = FeatureSettings.SprintSpeed
         end,
         disable = function()
-            if Humanoid then
-                Humanoid.WalkSpeed = (FeatureStates.Speed and FeatureSettings.Speed) or 16
-            end
+            if not Humanoid then return end
+            Humanoid.WalkSpeed = (FeatureStates.Speed and FeatureSettings.Speed) or 16
         end,
     },
 
     Lowhop = {
         enable = function()
             Connections.Lowhop = RunService.Heartbeat:Connect(function()
-                if Humanoid and HumanoidRootPart then
-                    if Humanoid.FloorMaterial ~= Enum.Material.Air then
-                        Humanoid.Jump = true
-                        HumanoidRootPart.Velocity = HumanoidRootPart.CFrame.LookVector * (Humanoid.WalkSpeed * 1.025) + Vector3.new(0, HumanoidRootPart.Velocity.Y, 0)
-                    end
+                if not Humanoid or not HumanoidRootPart then return end
+                if Humanoid.FloorMaterial ~= Enum.Material.Air then
+                    Humanoid.Jump = true
+                    HumanoidRootPart.Velocity = HumanoidRootPart.CFrame.LookVector * (Humanoid.WalkSpeed * 1.025) + Vector3.new(0, HumanoidRootPart.Velocity.Y, 0)
                 end
             end)
         end,
@@ -398,11 +397,10 @@ local FeatureHandlers = {
     NoKnockBack = {
         enable = function()
             Connections.NoKnockBack = RunService.Heartbeat:Connect(function()
-                if Character then
-                    for _, child in ipairs(Character:GetChildren()) do
-                        if child:IsA("BodyVelocity") or child:IsA("BodyForce") or child:IsA("BodyGyro") then
-                            child:Destroy()
-                        end
+                if not Character then return end
+                for _, child in ipairs(Character:GetChildren()) do
+                    if child:IsA("BodyVelocity") or child:IsA("BodyForce") or child:IsA("BodyGyro") then
+                        child:Destroy()
                     end
                 end
             end)
@@ -418,7 +416,8 @@ local FeatureHandlers = {
     NoSlow = {
         enable = function()
             Connections.NoSlow = RunService.Heartbeat:Connect(function()
-                if Humanoid and Humanoid.WalkSpeed < 16 and Humanoid.WalkSpeed > 0 then
+                if not Humanoid then return end
+                if Humanoid.WalkSpeed < 16 and Humanoid.WalkSpeed > 0 then
                     Humanoid.WalkSpeed = 16
                 end
             end)
@@ -434,7 +433,8 @@ local FeatureHandlers = {
     Bhop = {
         enable = function()
             Connections.Bhop = RunService.Heartbeat:Connect(function()
-                if Humanoid and HumanoidRootPart and Humanoid.FloorMaterial ~= Enum.Material.Air then
+                if not Humanoid or not HumanoidRootPart then return end
+                if Humanoid.FloorMaterial ~= Enum.Material.Air then
                     Humanoid.Jump = true
                     local moveVec = Humanoid.MoveDirection * 1.05
                     HumanoidRootPart.Velocity = HumanoidRootPart.Velocity + HumanoidRootPart.CFrame.LookVector * moveVec.Z * 0.05
@@ -486,19 +486,23 @@ WindUI:Popup({
 
 repeat task.wait() until Confirmed
 
--- 创建主窗口
+-- 创建主窗口，宽度设为140
 local Window = WindUI:CreateWindow({
     Title = "PigGod UI",
     Icon = "rbxassetid://129260712070622",
     IconThemed = true,
     Author = "PigGod",
     Folder = "MyGUI",
-    Size = UDim2.fromOffset(580, 340),
+    Size = UDim2.fromOffset(140, 340),
     Transparent = true,
     Theme = "Dark",
     User = { Enabled = true },
-    SideBarWidth = 200,
+    SideBarWidth = 140,
     ScrollBarEnabled = true,
+    UISizeConstraint = {
+        MinSize = Vector2.new(140, 250),
+        MaxSize = Vector2.new(140, 500)
+    }
 })
 
 -- 创建标签页
@@ -511,25 +515,21 @@ local Tabs = {
     Exploit = Window:Tab({ Title = "Exploit", Icon = "code" }),
 }
 
--- 立即为每个标签页添加内容，避免"this tab is empty"错误
-
 -- 主标签页内容
 Tabs.Main:Paragraph({
-    Title = "欢迎使用皮革尬的脚盆",
-    Desc = "一个高效、美观的游戏界面工具集",
+    Title = "欢迎使用",
+    Desc = "皮革尬的脚盆",
 })
 
 -- 添加图片元素
-Tabs.Main:Element({
-    Type = "Image",
+Tabs.Main:Image({
     Image = "https://raw.githubusercontent.com/DUKECCB1337/PigGod/839e3ef641e2a8f3a56d7fd96352d87174dbec0c/1756457861236.jpg",
     Size = UDim2.new(0, 42, 0, 42),
     Title = "主标志",
     Desc = "皮革尬的脚盆官方标志"
 })
 
-Tabs.Main:Element({
-    Type = "Thumbnail",
+Tabs.Main:Image({
     Image = "https://raw.githubusercontent.com/DUKECCB1337/PigGod/refs/heads/main/1755512636061.jpeg",
     Size = UDim2.new(0, 120, 0, 120),
     Title = "缩略图",
@@ -542,7 +542,6 @@ Tabs.Main:Button({
     Desc = "将当前功能设置保存到云端",
     Callback = function()
         local settings = HttpService:JSONEncode(FeatureSettings)
-        -- 在实际应用中，这里应该使用DataStoreService
         notify("设置已保存", "下次启动时将应用您的设置", 2)
     end
 })
@@ -729,7 +728,6 @@ Tabs.Combat:Toggle({
     Desc = "自动攻击附近的敌人",
     Callback = function(state)
         notify("自动攻击已"..(state and "开启" or "关闭"), state and "开始自动攻击" or "停止自动攻击", 2)
-        -- 这里添加自动攻击代码
     end
 })
 
@@ -908,3 +906,7 @@ end)
 game:BindToClose(function()
     Window:Close()
 end)
+--fuck
+--dicks
+--penis
+--cocks
