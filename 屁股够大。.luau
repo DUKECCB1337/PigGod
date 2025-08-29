@@ -1,4 +1,28 @@
-Local WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Guo61/Cat-/refs/heads/main/main.lua"))()
+-- 安全加载WindUI库
+local WindUI = nil
+local function LoadWindUI()
+    local sources = {
+        "https://raw.githubusercontent.com/Guo61/Cat-/refs/heads/main/main.lua",
+        "https://raw.githubusercontent.com/AlexR32/Roblox/main/WindUI.lua" -- 备用源
+    }
+    
+    for _, url in ipairs(sources) do
+        local success, result = pcall(function()
+            return loadstring(game:HttpGet(url, true))()
+        end)
+        if success and type(result) == "table" then
+            return result
+        end
+    end
+    return nil
+end
+
+WindUI = LoadWindUI()
+
+if not WindUI then
+    warn("WindUI库加载失败，请检查网络连接或链接有效性")
+    return
+end
 
 -- 服务和变量初始化
 local Players = game:GetService("Players")
@@ -10,6 +34,21 @@ local TweenService = game:GetService("TweenService")
 local StarterGui = game:GetService("StarterGui")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService = game:GetService("HttpService")
+local CoreGui = game:GetService("CoreGui")
+
+-- 安全等待函数 - 解决 "CoreGui:WaitForChild" 错误
+local function SafeWaitForChild(parent, childName, timeout)
+    timeout = timeout or 5
+    local start = tick()
+    local child = parent:FindFirstChild(childName)
+    
+    while not child and (tick() - start) < timeout do
+        task.wait(0.1)
+        child = parent:FindFirstChild(childName)
+    end
+    
+    return child
+end
 
 -- 玩家和角色信息
 local LocalPlayer = Players.LocalPlayer
@@ -58,24 +97,35 @@ local Keybinds = {
     OpenGUI = Enum.KeyCode.RightShift,
 }
 
+-- 安全等待核心GUI元素 - 解决 "TopBarApp" 错误
+local topBarApp = SafeWaitForChild(CoreGui, "TopBarApp")
+if not topBarApp then
+    warn("TopBarApp not found in CoreGui")
+end
+
 -- 刷新角色信息
 LocalPlayer.CharacterAdded:Connect(function(newChar)
     Character = newChar
-    Humanoid = newChar:WaitForChild("Humanoid")
-    HumanoidRootPart = newChar:WaitForChild("HumanoidRootPart")
+    Humanoid = SafeWaitForChild(newChar, "Humanoid") or newChar:WaitForChild("Humanoid")
+    HumanoidRootPart = SafeWaitForChild(newChar, "HumanoidRootPart") or newChar:WaitForChild("HumanoidRootPart")
 end)
 
 -- 通知系统
 local function notify(text, time)
-    time = time or 2
-    WindUI:Notify({
-        Title = "通知",
-        Content = text,
-        Duration = time
-    })
+    if WindUI and WindUI.Notify then
+        WindUI:Notify({
+            Title = "通知",
+            Content = text,
+            Duration = time or 2
+        })
+    else
+        -- 备用通知系统
+        warn(text)
+    end
 end
 
--- 功能处理函数
+-- 功能处理函数 (同上，保持不变)
+-- ... [保留原有功能处理函数] ...
 local FeatureHandlers = {
     NoClip = {
         enable = function()
@@ -471,6 +521,11 @@ local FeatureHandlers = {
 
 -- 功能切换函数
 local function toggleFeature(featureName, state)
+    if not FeatureHandlers[featureName] then
+        notify("无效功能: "..featureName, 2)
+        return
+    end
+    
     local newState = state ~= nil and state or not FeatureStates[featureName]
     
     -- 处理功能冲突
@@ -489,13 +544,16 @@ local function toggleFeature(featureName, state)
     
     FeatureStates[featureName] = newState
     local handler = FeatureHandlers[featureName]
-    if handler then
-        if newState then
-            if handler.enable then handler.enable() end
-        else
-            if handler.disable then handler.disable() end
+    
+    pcall(function()
+        if handler then
+            if newState then
+                if handler.enable then handler.enable() end
+            else
+                if handler.disable then handler.disable() end
+            end
         end
-    end
+    end)
     
     notify(featureName .. (newState and " 已启用" or " 已禁用"), 1.5)
 end
@@ -524,215 +582,231 @@ local function createPlayerList()
     return players
 end
 
--- Test
-local Confirmed = false
+-- 主程序入口
+local function main()
+    -- Test
+    local Confirmed = false
 
-WindUI:Popup({
-    Title = "皮革尬的脚盆v1.0",
-    Icon = "rbxassetid://129260712070622",
-    IconThemed = true,
-    Content = "欢迎使用皮革尬的脚盆。",
-    Buttons = {
-        {
-            Title = "进入脚盆。",
-            Icon = "arrow-right",
-            Callback = function() Confirmed = true end,
-            Variant = "Primary",
+    WindUI:Popup({
+        Title = "皮革尬的脚盆v1.0",
+        Icon = "rbxassetid://129260712070622",
+        IconThemed = true,
+        Content = "欢迎使用皮革尬的脚盆。",
+        Buttons = {
+            {
+                Title = "进入脚盆。",
+                Icon = "arrow-right",
+                Callback = function() Confirmed = true end,
+                Variant = "Primary",
+            }
         }
+    })
+
+    repeat task.wait() until Confirmed
+
+    -- 创建主窗口
+    local Window = WindUI:CreateWindow({
+        Title = "PigGod UI",
+        Icon = "rbxassetid://129260712070622",
+        IconThemed = true,
+        Author = "PigGod",
+        Folder = "MyGUI",
+        Size = UDim2.fromOffset(580, 340),
+        Transparent = true,
+        Theme = "Dark",
+        User = { Enabled = true },
+        SideBarWidth = 200,
+        ScrollBarEnabled = true,
+    })
+
+    -- 创建标签页
+    local Tabs = {
+        Main = Window:Tab({ Title = "Main", Icon = "rbxassetid://6026568198" }),
+        Movement = Window:Tab({ Title = "Movement", Icon = "rbxassetid://94462465090724" }),
+        Visual = Window:Tab({ Title = "Visual", Icon = "eye" }), -- 新增视觉分类
+        Combat = Window:Tab({ Title = "Combat", Icon = "swords" }),
+        Player = Window:Tab({ Title = "Player", Icon = "user" }),
+        Misc = Window:Tab({ Title = "Misc", Icon = "settings" }),
+        Exploit = Window:Tab({ Title = "Exploit", Icon = "code" }),
     }
-})
 
-repeat task.wait() until Confirmed
+    Window:SelectTab(1)
 
--- 创建主窗口
-local Window = WindUI:CreateWindow({
-    Title = "PigGod UI",
-    Icon = "rbxassetid://129260712070622",
-    IconThemed = true,
-    Author = "PigGod",
-    Folder = "MyGUI",
-    Size = UDim2.fromOffset(580, 340),
-    Transparent = true,
-    Theme = "Dark",
-    User = { Enabled = true },
-    SideBarWidth = 200,
-    ScrollBarEnabled = true,
-})
+    -- Main 标签页
+    Tabs.Main:Paragraph({
+        Title = "欢迎",
+        Desc = "皮革尬的脚盆v1.0",
+    })
 
--- 创建标签页
-local Tabs = {
-    Main = Window:Tab({ Title = "Main", Icon = "rbxassetid://6026568198" }),
-    Movement = Window:Tab({ Title = "Movement", Icon = "rbxassetid://94462465090724" }),
-    Visual = Window:Tab({ Title = "Visual", Icon = "eye" }), -- 新增视觉分类
-    Combat = Window:Tab({ Title = "Combat", Icon = "swords" }),
-    Player = Window:Tab({ Title = "Player", Icon = "user" }),
-    Misc = Window:Tab({ Title = "Misc", Icon = "settings" }),
-    Exploit = Window:Tab({ Title = "Exploit", Icon = "code" }),
-}
-
-Window:SelectTab(1)
-
--- Main 标签页
-Tabs.Main:Paragraph({
-    Title = "欢迎",
-    Desc = "皮革尬的脚盆v1.0",
-})
-
--- Movement 标签页
-Tabs.Movement:Toggle({
-    Title = "NoClip",
-    Description = "穿墙模式",
-    Callback = function(state)
-        toggleFeature("NoClip", state)
-    end
-})
-
-Tabs.Movement:Toggle({
-    Title = "Speed",
-    Description = "增加移动速度",
-    Callback = function(state)
-        toggleFeature("Speed", state)
-    end
-})
-
-Tabs.Movement:Slider({
-    Title = "Speed Value",
-    Min = 16,
-    Max = 500,
-    Default = FeatureSettings.Speed,
-    Callback = function(value)
-        FeatureSettings.Speed = value
-        if FeatureStates.Speed then
-            Humanoid.WalkSpeed = value
+    -- Movement 标签页
+    Tabs.Movement:Toggle({
+        Title = "NoClip",
+        Description = "穿墙模式",
+        Callback = function(state)
+            toggleFeature("NoClip", state)
         end
-    end
-})
+    })
 
-Tabs.Movement:Toggle({
-    Title = "Fly",
-    Description = "飞行模式",
-    Callback = function(state)
-        toggleFeature("Fly", state)
-    end
-})
-
-Tabs.Movement:Slider({
-    Title = "Fly Speed",
-    Min = 10,
-    Max = 300,
-    Default = FeatureSettings.FlySpeed,
-    Callback = function(value)
-        FeatureSettings.FlySpeed = value
-    end
-})
-
--- Visual 标签页 (新增)
-Tabs.Visual:Toggle({
-    Title = "Night Vision",
-    Description = "夜视模式",
-    Callback = function(state)
-        toggleFeature("NightVision", state)
-    end
-})
-
-Tabs.Visual:Toggle({
-    Title = "ESP",
-    Description = "显示玩家轮廓",
-    Callback = function(state)
-        toggleFeature("ESP", state)
-    end
-})
-
--- Combat 标签页
-Tabs.Combat:Toggle({
-    Title = "Hitbox",
-    Description = "调整碰撞箱大小",
-    Callback = function(state)
-        toggleFeature("Hitbox", state)
-    end
-})
-
-Tabs.Combat:Slider({
-    Title = "Hitbox Scale",
-    Min = 0.5,
-    Max = 5,
-    Default = FeatureSettings.HitboxScale,
-    Callback = function(value)
-        FeatureSettings.HitboxScale = value
-    end
-})
-
--- Player 标签页
-Tabs.Player:Toggle({
-    Title = "High Jump",
-    Description = "高跳模式",
-    Callback = function(state)
-        toggleFeature("HighJump", state)
-    end
-})
-
-Tabs.Player:Slider({
-    Title = "Jump Power",
-    Min = 50,
-    Max = 500,
-    Default = FeatureSettings.JumpPower,
-    Callback = function(value)
-        FeatureSettings.JumpPower = value
-        if FeatureStates.HighJump then
-            Humanoid.JumpPower = value
+    Tabs.Movement:Toggle({
+        Title = "Speed",
+        Description = "增加移动速度",
+        Callback = function(state)
+            toggleFeature("Speed", state)
         end
-    end
-})
+    })
 
--- Misc 标签页
-Tabs.Misc:Toggle({
-    Title = "Anti Fling",
-    Description = "防止被甩飞",
-    Callback = function(state)
-        toggleFeature("AntiWalkFling", state)
-    end
-})
+    Tabs.Movement:Slider({
+        Title = "Speed Value",
+        Min = 16,
+        Max = 500,
+        Default = FeatureSettings.Speed,
+        Callback = function(value)
+            FeatureSettings.Speed = value
+            if FeatureStates.Speed then
+                Humanoid.WalkSpeed = value
+            end
+        end
+    })
 
-Tabs.Misc:Toggle({
-    Title = "No Knockback",
-    Description = "无击退效果",
-    Callback = function(state)
-        toggleFeature("NoKnockBack", state)
-    end
-})
+    Tabs.Movement:Toggle({
+        Title = "Fly",
+        Description = "飞行模式",
+        Callback = function(state)
+            toggleFeature("Fly", state)
+        end
+    })
 
--- Exploit 标签页
-Tabs.Exploit:Toggle({
-    Title = "Click TP",
-    Description = "点击传送",
-    Callback = function(state)
-        toggleFeature("ClickTP", state)
-    end
-})
+    Tabs.Movement:Slider({
+        Title = "Fly Speed",
+        Min = 10,
+        Max = 300,
+        Default = FeatureSettings.FlySpeed,
+        Callback = function(value)
+            FeatureSettings.FlySpeed = value
+        end
+    })
 
-Tabs.Exploit:Button({
-    Title = "Teleport to Player",
-    Description = "传送到玩家",
-    Callback = function()
-        WindUI:Popup({
-            Title = "选择玩家",
-            Content = "选择要传送到的玩家",
-            Buttons = createPlayerList()
+    -- Visual 标签页 (新增)
+    Tabs.Visual:Toggle({
+        Title = "Night Vision",
+        Description = "夜视模式",
+        Callback = function(state)
+            toggleFeature("NightVision", state)
+        end
+    })
+
+    Tabs.Visual:Toggle({
+        Title = "ESP",
+        Description = "显示玩家轮廓",
+        Callback = function(state)
+            toggleFeature("ESP", state)
+        end
+    })
+
+    -- Combat 标签页
+    Tabs.Combat:Toggle({
+        Title = "Hitbox",
+        Description = "调整碰撞箱大小",
+        Callback = function(state)
+            toggleFeature("Hitbox", state)
+        end
+    })
+
+    Tabs.Combat:Slider({
+        Title = "Hitbox Scale",
+        Min = 0.5,
+        Max = 5,
+        Default = FeatureSettings.HitboxScale,
+        Callback = function(value)
+            FeatureSettings.HitboxScale = value
+        end
+    })
+
+    -- Player 标签页
+    Tabs.Player:Toggle({
+        Title = "High Jump",
+        Description = "高跳模式",
+        Callback = function(state)
+            toggleFeature("HighJump", state)
+        end
+    })
+
+    Tabs.Player:Slider({
+        Title = "Jump Power",
+        Min = 50,
+        Max = 500,
+        Default = FeatureSettings.JumpPower,
+        Callback = function(value)
+            FeatureSettings.JumpPower = value
+            if FeatureStates.HighJump then
+                Humanoid.JumpPower = value
+            end
+        end
+    })
+
+    -- Misc 标签页
+    Tabs.Misc:Toggle({
+        Title = "Anti Fling",
+        Description = "防止被甩飞",
+        Callback = function(state)
+            toggleFeature("AntiWalkFling", state)
+        end
+    })
+
+    Tabs.Misc:Toggle({
+        Title = "No Knockback",
+        Description = "无击退效果",
+        Callback = function(state)
+            toggleFeature("NoKnockBack", state)
+        end
+    })
+
+    -- Exploit 标签页
+    Tabs.Exploit:Toggle({
+        Title = "Click TP",
+        Description = "点击传送",
+        Callback = function(state)
+            toggleFeature("ClickTP", state)
+        end
+    })
+
+    Tabs.Exploit:Button({
+        Title = "Teleport to Player",
+        Description = "传送到玩家",
+        Callback = function()
+            WindUI:Popup({
+                Title = "选择玩家",
+                Content = "选择要传送到的玩家",
+                Buttons = createPlayerList()
+            })
+        end
+    })
+
+    -- 窗口关闭事件
+    Window:OnClose(function()
+        notify("UI已关闭", 2)
+    end)
+
+    -- 键位绑定事件
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed then return end
+        if input.KeyCode == Keybinds.OpenGUI then
+            Window:Toggle()
+        end
+    end)
+
+    notify("客户端初始化完成！按RightShift打开菜单", 3)
+end
+
+-- 运行主程序并捕获错误
+local success, err = pcall(main)
+if not success then
+    warn("脚本运行错误: "..tostring(err))
+    if WindUI and WindUI.Notify then
+        WindUI:Notify({
+            Title = "脚本错误",
+            Content = tostring(err),
+            Duration = 10
         })
     end
-})
-
--- 窗口关闭事件
-Window:OnClose(function()
-    notify("UI已关闭", 2)
-end)
-
--- 键位绑定事件
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if input.KeyCode == Keybinds.OpenGUI then
-        Window:Toggle()
-    end
-end)
-
-notify("客户端初始化完成！按RightShift打开菜单", 3)
+end
