@@ -36,7 +36,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService = game:GetService("HttpService")
 local CoreGui = game:GetService("CoreGui")
 
--- 安全等待函数 - 解决 "CoreGui:WaitForChild" 错误
+-- 安全等待函数
 local function SafeWaitForChild(parent, childName, timeout)
     timeout = timeout or 5
     local start = tick()
@@ -94,7 +94,7 @@ local Keybinds = {
 -- 连接管理
 local Connections = {}
 
--- 安全等待核心GUI元素 - 解决 "TopBarApp" 错误
+-- 安全等待核心GUI元素
 local topBarApp = SafeWaitForChild(CoreGui, "TopBarApp")
 if not topBarApp then
     warn("TopBarApp not found in CoreGui")
@@ -106,20 +106,9 @@ LocalPlayer.CharacterAdded:Connect(function(newChar)
     Humanoid = SafeWaitForChild(newChar, "Humanoid") or newChar:WaitForChild("Humanoid")
     HumanoidRootPart = SafeWaitForChild(newChar, "HumanoidRootPart") or newChar:WaitForChild("HumanoidRootPart")
     
-    -- 仅重新应用已启用的功能设置
-    if FeatureStates.Speed then
-        Humanoid.WalkSpeed = FeatureSettings.Speed
-    elseif FeatureStates.Sprint then
-        Humanoid.WalkSpeed = FeatureSettings.SprintSpeed
-    else
-        Humanoid.WalkSpeed = 16
-    end
-    
-    if FeatureStates.HighJump then
-        Humanoid.JumpPower = FeatureSettings.JumpPower
-    else
-        Humanoid.JumpPower = 50
-    end
+    -- 重置为默认移动设置，不重新启用任何功能
+    Humanoid.WalkSpeed = 16
+    Humanoid.JumpPower = 50
 end)
 
 -- 通知系统
@@ -290,7 +279,7 @@ local FeatureHandlers = {
         enable = function()
             if Humanoid then
                 Humanoid.JumpPower = FeatureSettings.JumpPower
-           end
+            end
         end,
         disable = function()
             if Humanoid then
@@ -402,7 +391,7 @@ local FeatureHandlers = {
                     end
                 end
             end)
-       end,
+        end,
         disable = function()
             if Connections.AirJump then
                 Connections.AirJump:Disconnect()
@@ -453,7 +442,7 @@ local FeatureHandlers = {
                 if Humanoid and HumanoidRootPart then
                     if Humanoid.FloorMaterial ~= Enum.Material.Air then
                         Humanoid.Jump = true
-                        HumanoidRootPart.Velocity = HumanoidRootPart.CFrame.LookVector * (Humanoid.WalkSpeed * 1.025) + Vector3.new(0, HumanoidRootPart.Velocity.Y, 0)
+                        HumanoidRootPart.Velocity = HumanoidRootPart.CFrame.LookVector * 10 + Vector3.new(0, HumanoidRootPart.Velocity.Y, 0)
                     end
                 end
             end)
