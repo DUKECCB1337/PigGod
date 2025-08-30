@@ -1,1035 +1,614 @@
--- 服务和变量初始化
-local Players = game:GetService("Players")
+-- 加载WindUI库
+local success, WindUI = pcall(function()
+    return loadstring(game:HttpGet("https://raw.githubusercontent.com/Xingyan777/roblox/refs/heads/main/main.lua"))()
+end)
+if not success then
+    warn("WindUI库加载失败：" .. tostring(WindUI))
+    game.StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.All, true)
+    error("请检查WindUI链接是否有效，程序已终止")
+end
+
+-- 添加必要的服务引用
 local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
 local Lighting = game:GetService("Lighting")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
-local TweenService = game:GetService("TweenService")
-local StarterGui = game:GetService("StarterGui")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService = game:GetService("HttpService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
--- 玩家和角色信息，通过CharacterAdded事件动态更新
+-- 获取本地玩家与相机
 local LocalPlayer = Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
-local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-local Humanoid = Character:WaitForChild("Humanoid")
-local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
 local Camera = Workspace.CurrentCamera
 
--- 全局UI和功能状态
-local MainGUI, TP_GUI, MobileButton = nil, nil, nil
-local IsGUIVisible = false
-local FeatureStates = {
-	NoClip = false,
-	NightVision = false,
-	ESP = false,
-	WalkFling = false,
-	WallClimb = false,
-	Speed = false,
-	HighJump = false,
-	KeepY = false,
-	TP = false,
-	ClickTP = false,
-	Fly = false,
-	AirJump = false,
-	AntiWalkFling = false,
-	Sprint = false,
-	Lowhop = false,
-	Gravity = false,
-	NoKnockBack = false,
-	NoSlow = false,
-	Bhop = false,
-	Hitbox = false,
-}
+-- 初始化角色引用
+local Character, Humanoid, HumanoidRootPart
+local function setupCharacter()
+    Character = LocalPlayer.Character
+    if Character then
+        Humanoid = Character:FindFirstChild("Humanoid")
+        HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
+    end
+end
 
--- 功能参数
-local FeatureSettings = {
-	Speed = 30,
-	JumpPower = 100,
-	FlySpeed = 50,
-	SprintSpeed = 40,
-	Gravity = 196.2, -- 默认重力值
-	HitboxScale = 1.5,
-}
-
--- 键位绑定系统
-local Keybinds = {
-	ClickGUI = Enum.KeyCode.RightShift,
-}
-local BindingInProgress = false
-local CurrentBindingFeature = nil
-
--- UI组件引用
-local FeatureButtonRefs = {}
-local MouseLockState = nil
-
--- 检查是否为移动设备
-local IsMobile = UserInputService.TouchEnabled
-
--- 刷新角色信息
+-- 角色加载/重生时更新引用
 LocalPlayer.CharacterAdded:Connect(function(newChar)
-	Character = newChar
-	Humanoid = newChar:WaitForChild("Humanoid")
-	HumanoidRootPart = newChar:WaitForChild("HumanoidRootPart")
+    Character = newChar
+    Humanoid = newChar:WaitForChild("Humanoid")
+    HumanoidRootPart = newChar:WaitForChild("HumanoidRootPart")
+    -- 重置功能变量
+    if FeatureHandlers and FeatureHandlers.LowHop then
+        FeatureHandlers.LowHop.airTicks = 0
+        FeatureHandlers.LowHop.shouldStrafe = false
+    end
+    if FeatureHandlers and FeatureHandlers.WalkFling then
+        FeatureHandlers.WalkFling.hiddenfling = false
+    end
 end)
+setupCharacter()
 
--- 通知系统
-local function notify(text, time)
-	time = time or 2
-	local notif = Instance.new("TextLabel")
-	notif.Size = UDim2.new(0, 320, 0, 40)
-	notif.Position = UDim2.new(0.5, -160, 0.08, 0)
-	notif.AnchorPoint = Vector2.new(0.5, 0)
-	notif.BackgroundTransparency = 0.15
-	notif.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-	notif.TextColor3 = Color3.fromRGB(255, 255, 255)
-	notif.Text = text
-	notif.TextScaled = true
-	notif.Font = Enum.Font.GothamSemibold
-	notif.ZIndex = 12000
-	notif.Parent = PlayerGui
-	Instance.new("UICorner", notif).CornerRadius = UDim.new(0, 6)
-
-	local tween = TweenService:Create(
-		notif,
-		TweenInfo.new(time, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
-		{BackgroundTransparency = 1, TextTransparency = 1}
-	)
-	tween:Play()
-	tween.Completed:Wait()
-	notif:Destroy()
-end
-
--- 刷新按钮视觉状态
-local function refreshButtonVisual(featureName)
-	local ref = FeatureButtonRefs[featureName]
-	if not ref or not ref.button then return end
-	local btn = ref.button
-	btn.BackgroundColor3 = FeatureStates[featureName] and Color3.fromRGB(10, 100, 200) or Color3.fromRGB(60, 60, 60)
-end
-
--- 功能控制和连接管理
-local Connections = {}
-
--- 功能处理函数（集中管理）
-local FeatureHandlers = {
-	NoClip = {
-		enable = function()
-			Connections.NoClip = RunService.Stepped:Connect(function()
-				if Character then
-					for _, part in ipairs(Character:GetDescendants()) do
-						if part:IsA("BasePart") then
-							part.CanCollide = false
-						end
-					end
-				end
-			end)
-		end,
-		disable = function()
-			if Connections.NoClip then Connections.NoClip:Disconnect() end
-			if Character then
-				for _, part in ipairs(Character:GetDescendants()) do
-					if part:IsA("BasePart") then
-						part.CanCollide = true
-					end
-				end
-			end
-		end,
-	},
-	NightVision = {
-		originalLighting = {},
-		enable = function()
-			FeatureHandlers.NightVision.originalLighting.Brightness = Lighting.Brightness
-			FeatureHandlers.NightVision.originalLighting.Ambient = Lighting.Ambient
-			FeatureHandlers.NightVision.originalLighting.OutdoorAmbient = Lighting.OutdoorAmbient
-			Lighting.Brightness = 1.5
-			Lighting.Ambient = Color3.fromRGB(255, 255, 255)
-			Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
-			Lighting.FogEnd = 0
-		end,
-		disable = function()
-			if FeatureHandlers.NightVision.originalLighting.Brightness then Lighting.Brightness = FeatureHandlers.NightVision.originalLighting.Brightness end
-			if FeatureHandlers.NightVision.originalLighting.Ambient then Lighting.Ambient = FeatureHandlers.NightVision.originalLighting.Ambient end
-			if FeatureHandlers.NightVision.originalLighting.OutdoorAmbient then Lighting.OutdoorAmbient = FeatureHandlers.NightVision.originalLighting.OutdoorAmbient end
-			Lighting.FogEnd = 100000
-		end,
-	},
-	ESP = {
-		enable = function()
-			Connections.ESP = RunService.RenderStepped:Connect(function()
-				for _, plr in ipairs(Players:GetPlayers()) do
-					if plr ~= LocalPlayer and plr.Character and not plr.Character:FindFirstChild("ESP_Highlight") then
-						local highlight = Instance.new("Highlight")
-						highlight.Name = "ESP_Highlight"
-						highlight.FillColor = Color3.fromRGB(200, 20, 20)
-						highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-						highlight.OutlineTransparency = 0
-						highlight.FillTransparency = 0.5
-						highlight.Enabled = true
-						highlight.Parent = plr.Character
-					end
-				end
-			end)
-		end,
-		disable = function()
-			if Connections.ESP then Connections.ESP:Disconnect() end
-			for _, obj in pairs(Workspace:GetDescendants()) do
-				if obj:IsA("Highlight") and obj.Name == "ESP_Highlight" then
-					obj:Destroy()
-				end
-			end
-		end,
-	},
-	WalkFling = {
-		enable = function()
-			Connections.WalkFling = RunService.Stepped:Connect(function()
-				if Humanoid and HumanoidRootPart and Humanoid.MoveDirection.Magnitude > 极速 then
-					local force = Humanoid.MoveDirection * 1000000 + Vector3.new(0, 1000000, 0)
-					local bodyForce = Instance.new("BodyForce")
-					bodyForce.Force = force
-					bodyForce.Parent极速 = HumanoidRootPart
-					task.delay(0.1, function() bodyForce:Destroy() end)
-				end
-			end)
-		end,
-		disable = function()
-			if Connections.WalkFling then Connections.Walk极速Fling:Disconnect() end
-		end,
-	},
-	WallClimb = {
-		enable = function()
-			Connections.WallClimb = RunService.Stepped:Connect(function()
-				if Humanoid and HumanoidRootPart then
-					local raycastParams = RaycastParams.new()
-					raycastParams.FilterDescendantsInstances = {Character}
-					raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-					local raycastResult = Workspace:Raycast(HumanoidRootPart.Position, HumanoidRootPart.CFrame.LookVector * 2, raycastParams)
-					if raycastResult and Humanoid.MoveDirection.Magnitude > 0 then
-						Humanoid.Jump = true
-					end
-				end
-			end)
-		end,
-		disable = function()
-			if Connections.WallClimb then Connections.WallClimb:Disconnect() end
-		end,
-	},
-	Speed = {
-		enable = function() Humanoid.WalkSpeed = FeatureSettings.Speed end,
-		disable = function() Humanoid.WalkSpeed = FeatureStates.Sprint and FeatureSettings.SprintSpeed or 16 end,
-	},
-	HighJump = {
-		enable极速 = function() Humanoid.JumpPower = FeatureSettings.JumpPower end,
-		disable = function() Humanoid.JumpPower = 50 end,
-	},
-	KeepY = {
-		originalY = 0,
-		enable = function()
-			if HumanoidRootPart then FeatureHandlers.KeepY.originalY = HumanoidRootPart.Position.Y end
-			Connections.KeepY = RunService.Stepped:Connect(function()
-				if HumanoidRootPart then
-					local pos = HumanoidRootPart.Position
-					HumanoidRootPart.Position = Vector3.new(pos.X, FeatureHandlers.KeepY.originalY, pos.Z)
-				end
-			end)
-		end,
-		disable = function()
-			if Connections.KeepY then Connections.KeepY:Disconnect() end
-		end,
-	},
-	TP = {
-		enable = function()
-			if TP_GUI then TP_GUI.Enabled = true end
-		end,
-		disable = function()
-			if TP_GUI then TP_GUI.Enabled = false end
-		end,
-	},
-	ClickTP = {
-		enable = function()
-			Connections.ClickTP = UserInputService.InputBegan:Connect(function(input, gameProcessed)
-				if gameProcessed or input.UserInputType ~= Enum.UserInputType.MouseButton1 or not Camera or not HumanoidRootPart then return end
-				local rayParams = RaycastParams.new()
-				rayParams.FilterDescendantsInstances = {Character}
-				rayParams.FilterType = Enum.RaycastFilterType.Blacklist
-				local raycastResult = Camera:ViewportPointToRay(UserInputService:GetMouseLocation().X, UserInputService:GetMouseLocation().Y)
-				local result = Workspace:Raycast(raycastResult.Origin, raycastResult.Direction * 1000, rayParams)
-				if result then
-					HumanoidRootPart.CFrame = CFrame.new(result.Position + Vector3.new(0, 3, 0))
-				end
-			end)
-		end,
-		disable = function()
-			if Connections.ClickTP then Connections.ClickTP:Disconnect() end
-		end,
-	},
-	Fly = {
-		enable = function()
-			Humanoid.PlatformStand = true
-			Humanoid:ChangeState(Enum.HumanoidStateType.Flying)
-			Connections.Fly = RunService.Stepped:Connect(function()
-				if HumanoidRootPart and Humanoid then
-					local moveDirection = Humanoid.MoveDirection
-					local flyVelocity = Vector3.new()
-					if moveDirection.Magnitude > 0 then
-						flyVelocity = HumanoidRootPart.CFrame.LookVector * moveDirection.Z * FeatureSettings.FlySpeed + Humanoid极速RootPart.CFrame.RightVector * moveDirection.X * FeatureSettings.FlySpeed
-					end
-					if UserInputService:极速IsKeyDown(Enum.KeyCode.Space) then flyVelocity += Vector3.new(0, FeatureSettings.FlySpeed, 0) end
-					if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then flyVelocity -= Vector3.new(0, FeatureSettings.FlySpeed, 0) end
-					HumanoidRootPart.CFrame = HumanoidRootPart.CFrame + flyVelocity * 0.05
-				end
-			end)
-		end,
-		disable = function()
-			if Connections.Fly then Connections.Fly:Disconnect() end
-			Humanoid.PlatformStand = false
-			Humanoid:ChangeState(Enum.HumanoidStateType.Running)
-		end,
-	},
-	AirJump = {
-		enable = function()
-			Connections.AirJump = UserInputService.InputBegan:Connect(function(input, gameProcessed)
-				if gameProcessed or input.UserInputType ~= Enum.UserInputType.Keyboard or input.KeyCode ~= Enum.KeyCode.Space then return end
-				if Humanoid and Humanoid.FloorMaterial == Enum.Material.Air then
-					Humanoid.Jump = true
-				end
-			end)
-		end,
-		disable = function()
-			if Connections.AirJump then Connections.AirJump:Disconnect() end
-		end,
-	},
-	AntiWalkFling = {
-		lastVelocity = Vector3.new(),
-		maxSafeVelocity = 80,
-		enable = function()
-			Connections.AntiWalkFling = RunService.Stepped:Connect(function()
-				if HumanoidRootPart then
-					local currentVelocity = HumanoidRootPart.Velocity
-					if (currentVelocity - FeatureHandlers.AntiWalkFling.lastVelocity).Magnitude > FeatureHandlers.AntiWalkFling.maxSafeVelocity then
-						HumanoidRootPart.Velocity = FeatureHandlers.AntiWalkFling.lastVelocity
-						notify("防甩飞已启动！", 1)
-					end
-					FeatureHandlers.AntiWalkFling.lastVelocity = currentVelocity
-				end
-			end)
-		end,
-		disable = function()
-			if Connections.AntiWalkFling then Connections.AntiWalkFling:Disconnect() end
-		end,
-	},
-	Sprint = {
-		enable = function() Humanoid.WalkSpeed = FeatureSettings.SprintSpeed end,
-		disable = function() Humanoid.WalkSpeed = FeatureStates.Speed and FeatureSettings.Speed or 16 end,
-	},
-	Lowhop = {
-		enable = function()
-			Connections.Lowhop = RunService.Heartbeat:Connect(function()
-				if Humanoid then
-					if Humanoid.FloorMaterial ~= Enum.Material.Air then
-						Humanoid.Jump = true
-						HumanoidRootPart.Velocity = HumanoidRootPart.CFrame.LookVector * (Humanoid.WalkSpeed * 1.025) + Vector3.new(0, HumanoidRootPart.Velocity.Y, 0)
-					end
-				end
-			end)
-		end,
-		disable = function()
-			if Connections.Lowhop then Connections.Lowhop:Disconnect() end
-极速		end,
-	},
-	Gravity = {
-		enable = function() Workspace.Gravity = FeatureSettings.Gravity end,
-		disable = function() Workspace.Gravity = 196.2 end,
-	},
-	NoKnockBack = {
-		enable = function()
-			Connections.NoKnockBack = RunService.Heartbeat:Connect(function()
-				if Character then
-					for _, child in ipairs(Character:GetChildren()) do
-						if child:IsA("BodyVelocity") or child:Is极速A("BodyForce") or child:IsA("BodyGyro") then
-							child:Destroy()
-						end
-					end
-				end
-			end)
-		end,
-		disable = function()
-			if Connections.NoKnockBack then Connections.NoKnockBack:Disconnect() end
-		end,
-	},
-	NoSlow = {
-		enable = function()
-			Connections.NoSlow = RunService.Heartbeat:Connect(function()
-				if Humanoid and Humanoid.WalkSpeed < 16 and Humanoid.WalkSpeed > 0 then
-					Humanoid.WalkSpeed = 16
-				end
-			end)
-		end,
-		disable = function()
-			if Connections.NoSlow then Connections.NoSlow:Disconnect() end
-		end,
-	},
-	Bhop = {
-		enable = function()
-			Connections.Bhop = RunService.Heartbeat:Connect(function()
-				if Humanoid and HumanoidRootPart and Humanoid.FloorMaterial ~= Enum.Material.Air then
-					Humanoid.Jump = true
-					local moveVec = Humanoid.MoveDirection * 1.05
-					HumanoidRootPart.Velocity = HumanoidRootPart.Velocity + HumanoidRootPart.CFrame.LookVector * moveVec.Z * 0.05
-				end
-			end)
-		end,
-		disable = function()
-			if Connections.Bhop then Connections.Bhop:Disconnect() end
-		end,
-	},
-	Hitbox = {
-		originalSizes = {},
-		enable = function()
-			for _, plr in ipairs(Players:GetPlayers()) do
-				if plr ~= LocalPlayer and pl极速r.Character then
-					for _, part in ipairs(plr.Character:GetDescendants()) do
-						if part:IsA("BasePart") then
-							FeatureHandlers.Hitbox.originalSizes[part] = part.Size
-							part.Size *= FeatureSettings.HitboxScale
-						end
-					end
-				end
-			end
-		end,
-		disable = function()
-			for part, size in pairs(FeatureHandlers.Hitbox.originalSizes) do
-				if part and part.Parent then
-					part.Size = size
-				end
-			end
-			FeatureHandlers.Hitbox.originalSizes = {}
-		end,
-	},
+-- 全局状态与配置
+local FeatureStates = {} -- 功能启用状态表
+local Connections = {} -- 事件连接跟踪表
+local FeatureSettings = { -- 功能参数配置
+    Speed = 30,
+    JumpPower = 100,
+    FlySpeed = 50,
+    SprintSpeed = 40,
+    Gravity = 196.2,
+    HitboxScale = 1.5,
+    LowHopGlide = false
 }
 
--- 功能切换函数
-local function toggleFeature(featureName, state)
-	local newState = state ~= nil and state or not FeatureStates[featureName]
-	
-	-- 处理功能冲突
-	if newState then
-		if featureName == "Speed" and FeatureStates.Sprint then
-			toggleFeature("Sprint", false)
-		elseif featureName == "Sprint" and FeatureStates.Speed then
-			toggleFeature("Speed", false)
-		end
-		if featureName == "Lowhop" and FeatureStates.Bhop then
-			toggleFeature("Bhop", false)
-		elseif featureName == "Bhop" and FeatureStates.Lowhop then
-			toggleFeature("Lowhop", false)
-		end
-	end
-	
-	FeatureStates[featureName] = newState
-	local handler = FeatureHandlers[featureName]
-	if handler then
-		if newState then
-			if handler.enable then handler.enable() end
-		else
-			if handler.disable then handler.disable() end
-		end
-	end
-	
-	refreshButtonVisual(featureName)
-	if featureName ~= "ClickGUI" then
-		notify(featureName .. (newState and " 已启用" or " 已禁用"), 1.5)
-	end
+-- 通用通知函数
+local function notify(title, desc, duration)
+    WindUI:Notify({
+        Title = title,
+        Desc = desc,
+        Duration = duration or 3
+    })
 end
 
--- 键位绑定系统
-local function startBinding(featureName)
-	if BindingInProgress then
-		notify("已有绑定任务进行中", 1.5)
-		return
-	end
-	BindingInProgress = true
-	CurrentBindingFeature = featureName
-	notify("按下新的按键来绑定 '"..featureName.."'...", 2)
-
-	local bindingConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
-		if gameProcessed or input.UserInputType ~= Enum.UserInputType.Keyboard then return end
-		Keybinds[CurrentBindingFeature] = input.KeyCode
-		notify("'"..CurrentBindingFeature.."' 已绑定到: "..input极速.KeyCode.Name, 2)
-		BindingInProgress = false
-		CurrentBindingFeature = nil
-		bindingConnection:Disconnect()
-	end)
+-- 辅助函数：根据移动方向调整水平速度
+local function withStrafe(velocity, speed)
+    if not Humanoid or not HumanoidRootPart then return velocity end
+    local moveDir = Humanoid.MoveDirection
+    if moveDir.Magnitude <= 0 then return velocity end
+    
+    local horizontalDir = CFrame.lookAt(Vector3.new(), Vector3.new(moveDir.X, 0, moveDir.Z)).LookVector
+    local targetSpeed = speed or Humanoid.WalkSpeed * 1.2
+    return Vector3.new(
+        horizontalDir.X * targetSpeed,
+        velocity.Y,
+        horizontalDir.Z * targetSpeed
+    )
 end
 
--- 创建详情面板
-local function createDetailPanel(titleText, content, settingName, inputHandler)
-	local frame = Instance.new("Frame")
-	frame.Size = UDim2.new(0, 300, 0, 180)
-	frame.Position = UDim2.new(0.5, -150, 0.5, -90)
-	frame.BackgroundColor3 = Color3.fromRGB(26, 26, 26)
-	frame.Parent = PlayerGui
-	frame.ZIndex = 10000
-	Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 8)
-	local stroke = Instance.new("UIStroke", frame)
-	stroke.Thickness = 1
-	stroke.Color = Color3.fromRGB(30, 30, 30)
-
-	local title = Instance.new("TextLabel")
-	title.Size = UDim2.new(1, 0, 0极速, 30)
-	title.BackgroundColor极速3 = Color3.fromRGB(36, 36, 36)
-	title.Text = titleText
-	title.TextScaled = true
-	title.TextColor3 = Color3.fromRGB(255, 255, 255)
-	title.Font = Enum.Font.GothamSemibold
-	title.Parent = frame
-	-- 拖动功能（双端支持）
-	local dragConn = nil
-	local dragInput, dragStart, startPos
-	
-	local function onInputEnded(input)
-		if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) and dragConn then
-			dragConn:Disconnect()
-			dragConn = nil
-		end
-	end
-	
-	title.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			dragInput = input
-			dragStart = input.Position
-			startPos = frame.Position
-			dragConn = UserInputService.InputChanged:Connect(function(input2)
-				if input2 == dragInput then
-					local delta = input2.Position - dragStart
-					frame.Position = startPos + UDim2.new(0, delta.X, 0, delta.Y)
-				end
-			end)
-		end
-	end)
-	
-	UserInputService.InputEnded:Connect(onInputEnded)
-
-	local closeBtn = Instance.new("TextButton")
-	closeBtn.Size = UDim2.new(0, 25, 0, 25)
-	closeBtn.Position = UDim2.new(1, -28, 0, 3)
-	closeBtn.AnchorPoint = Vector2.new(1, 0)
-	closeBtn.BackgroundColor3 = Color3.fromRGB(200, 20, 20)
-	closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-	closeBtn.Font = Enum.Font.GothamSemibold
-	closeBtn.Text = "X"
-	closeBtn.Parent = title
-	closeBtn.Activated:Connect(function()
-		frame:Destroy()
-		UserInputService.InputEnded:Disconnect(onInputEnded)
-	end)
-
-	local desc = Instance.new("TextLabel")
-	desc.Size = UDim2.new(1, -10, 0.6, 0)
-	desc.Position = UDim2.new(0, 5, 0, 35)
-	desc.Text = content
-	desc.TextWrapped = true
-	desc.TextScaled = true
-	desc.TextColor3 = Color极速3.fromRGB(255, 255, 255)
-	desc.BackgroundColor3 = Color3.fromRGB(26, 26, 26)
-	desc.TextXAlignment = Enum.TextXAlignment.Left
-	desc.TextYAlignment = Enum.TextYAlignment.Top
-	desc.Parent = frame
-
-	if inputHandler then
-		local inputField = Instance.new("TextBox")
-		inputField.Size = UDim2.new(1, -10, 0, 30)
-		inputField.Position = UDim2.new(0, 5, 0.7, 0)
-		inputField.AnchorPoint = Vector2.new(0, 0.5)
-		inputField.PlaceholderText = "输入新值..."
-		inputField.Text = tostring(FeatureSettings[settingName])
-		inputField.BackgroundColor3 = Color3.fromRGB(40, 40, 极速40)
-		inputField.TextColor3 = Color3.fromRGB(255, 255, 255)
-		inputField.Font = Enum.Font.GothamSemibold
-		inputField.Parent = frame
-		inputField.FocusLost:Connect(function()
-			inputHandler(inputField.Text, settingName)
-		end)
-	end
-	
-	return frame
+-- 辅助函数：检测角色下方是否有方块（用于LowHop）
+local function isGroundExempt()
+    if not Character or not HumanoidRootPart then return false end
+    if Humanoid.FloorMaterial ~= Enum.Material.Air then return false end
+    
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterDescendantsInstances = {Character}
+    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+    raycastParams.IgnoreWater = true
+    
+    local origin = HumanoidRootPart.Position
+    local direction = Vector3.new(0, -0.66, 0)
+    local result = Workspace:Raycast(origin, direction, raycastParams)
+    return result ~= nil and HumanoidRootPart.Velocity.Y < 0
 end
 
--- 创建TP GUI
-local function createTPGUI()
-	local gui = Instance.new("ScreenGui")
-	gui.Name = "TP_GUI"
-	gui.ResetOnSpawn = false
-	gui.Parent = PlayerGui
-	gui.ZIndexBehavior = Enum.ZIndexBehavior.Global
-	gui.DisplayOrder = 9999
-	gui.Enabled = false -- 默认禁用
-
-	local frame = Instance.new("Frame")
-	frame.Name = "Main"
-	frame.Size = UDim2.new(0, 250, 0, 400)
-	frame.Position = UDim2.new(1, -260, 0.5, -200)
-	frame.AnchorPoint = Vector2.new(1, 0.5)
-	frame.BackgroundColor3 = Color3.fromRGB(26, 26, 26)
-	frame.Parent = gui
-	Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 8)
-
-	local title = Instance.new("TextLabel")
-	title.Name = "Title"
-	title.Size = UDim2.new(1, 0, 0, 30)
-	title.BackgroundColor3 = Color3.fromRGB(36, 36, 36)
-	title.Text = "Teleport"
-	title.TextColor3 = Color3.fromRGB(255, 255, 255)
-	title.TextScaled = true
-	title.Font = Enum.Font.GothamSem极速ibold
-	title.Parent = frame
-	-- 拖动功能（双端支持）
-	local dragConn = nil
-	local dragInput, dragStart, startPos
-	
-	local function onInputEnded(input)
-		if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) and dragConn then
-			dragConn:Disconnect()
-			dragConn = nil
-		end
-	end
-	
-	title.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			dragInput = input
-			dragStart = input.Position
-			startPos = frame.Position
-			dragConn = UserInputService.InputChanged:Connect(function(input2)
-				if input2 == dragInput then
-					local delta = input2.Position - dragStart
-					frame.Position = startPos + UDim2.new(0, delta.X, 0, delta.Y)
-				end
-			end)
-		end
-	end)
-	
-	UserInputService.InputEnded:Connect(onInputEnded)
-
-	local closeBtn = Instance.new("TextButton")
-	closeBtn.Size = UDim2.new(0, 25, 0, 25)
-	closeBtn.Position = UDim2.new(1, -28, 0, 3)
-	closeBtn.AnchorPoint = Vector2.new(1, 0)
-	closeBtn.BackgroundColor3 = Color3.fromRGB(200, 20, 20)
-	closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-	closeBtn.Font = Enum.Font.GothamSemibold
-	closeBtn.Text = "X"
-	closeBtn.Parent = title
-	closeBtn.Activated:Connect(function()
-		toggleFeature("TP", false)
-		UserInputService.InputEnded:Disconnect(onInputEnded)
-	end)
-
-	local playerList = Instance.new("ScrollingFrame")
-	playerList.Name = "PlayerList"
-	playerList.Size = UDim2.new(1, -10, 1, -40)
-	playerList.Position = UDim2.new(0, 5, 0, 35)
-	playerList.BackgroundTransparency = 1
-	playerList.Parent = frame
-	local listLayout = Instance.new("UIListLayout")
-	listLayout.FillDirection = Enum.FillDirection.Vertical
-	listLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	listLayout.Padding = UDim.new(极速0, 5)
-	listLayout.Parent = playerList
-
-	local function refreshPlayerList()
-		for _, child in ipairs(playerList:GetChildren()) do
-			if child:IsA("TextButton") then child:Destroy() end
-		end
-		for _, p in ipairs(Players:极速GetPlayers()) do
-			if p ~= LocalPlayer then
-				local tpBtn = Instance.new("TextButton")
-				t极速pBtn.Size = UDim2.new(1, 0, 0, 30)
-				tpBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-				tpBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-				tpBtn.Text = p.Name
-				tpBtn.TextScaled = true
-				tpBtn.Font = Enum.Font.GothamSemibold
-				tpBtn.Parent = playerList
-				tpBtn.Activated:Connect(function()
-					local targetChar = p.Character
-					if not targetChar or not targetChar:FindFirstChild("HumanoidRootPart") then
-						notify("无法找到该玩家角色", 2)
-						return
-					end
-					if HumanoidRootPart then
-						HumanoidRootPart.CFrame = targetChar.HumanoidRootPart.CFrame + Vector3.new(0, 5, 0)
-						notify("已传送到 "..p.Name, 2)
-					end
-				end)
-			end
-		end
-	end
-	
-	Players.PlayerAdded:Connect(refreshPlayerList)
-	Players.PlayerRemoving:Connect(refreshPlayerList)
-	refreshPlayerList()
-
-	return gui
+-- 辅助函数：简化速度加成检测（可扩展）
+local function getSpeedAmplifier()
+    return 0
 end
 
--- 创建主GUI
-local function createMainGUI()
-	local gui = Instance.new("ScreenGui")
-	gui.Name = "PigGod_LiquidGui"
-	gui.ResetOnSpawn = false
-	gui.Parent = PlayerGui
-	gui.ZIndexBehavior = Enum.ZIndexBehavior.Global
-	gui.DisplayOrder = 9999
-	gui.Enabled = false -- 默认禁用
+-- 功能处理器定义（基础类功能）
+local FeatureHandlers = {
+    -- 穿墙功能
+    NoClip = {
+        enable = function()
+            Connections.NoClip = RunService.Stepped:Connect(function()
+                if Character then
+                    for _, part in ipairs(Character:GetDescendants()) do
+                        if part:IsA("BasePart") then part.CanCollide = false end
+                    end
+                end
+            end)
+        end,
+        disable = function()
+            if Connections.NoClip then Connections.NoClip:Disconnect() Connections.NoClip = nil end
+            if Character then
+                for _, part in ipairs(Character:GetDescendants()) do
+                    if part:IsA("BasePart") then part.CanCollide = true end
+                end
+            end
+        end,
+    },
 
-	local mainFrame = Instance.new("Frame")
-	mainFrame.Name = "Main"
-	mainFrame.Size = UDim2.new(0, 350, 0, 400)
-	mainFrame.Position = UDim2.new(0.5, -175, 0.5, -200)
-	mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-	mainFrame.BackgroundColor3 = Color3.fromRGB(26, 26, 26)
-	mainFrame.Active = true
-	mainFrame.Parent = gui
-	Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 8)
-	local stroke = Instance.new("UIStroke", mainFrame)
-	stroke.Thickness = 1
-	stroke.Color = Color3.fromRGB(30, 30, 30)
-	stroke.Transparency = 0.25
+    -- 夜视功能
+    NightVision = {
+        originalLighting = {},
+        enable = function()
+            local handler = FeatureHandlers.NightVision
+            handler.originalLighting = {
+                Brightness = Lighting.Brightness,
+                Ambient = Lighting.Ambient,
+                OutdoorAmbient = Lighting.OutdoorAmbient,
+                FogEnd = Lighting.FogEnd
+            }
+            Lighting.Brightness = 1.5
+            Lighting.Ambient = Color3.fromRGB(255, 255, 255)
+            Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
+            Lighting.FogEnd = 0
+        end,
+        disable = function()
+            local handler = FeatureHandlers.NightVision
+            if handler.originalLighting.Brightness then Lighting.Brightness = handler.originalLighting.Brightness end
+            if handler.originalLighting.Ambient then Lighting.Ambient = handler.originalLighting.Ambient end
+            if handler.originalLighting.OutdoorAmbient then Lighting.OutdoorAmbient = handler.originalLighting.OutdoorAmbient end
+            Lighting.FogEnd = handler.originalLighting.FogEnd or 100000
+        end,
+    },
 
-	local title = Instance.new("极速TextLabel")
-	title.Name = "Title"
-	title.Size = UDim2.new(1, 0, 0, 30)
-	title.BackgroundColor3 = Color3.fromRGB(36, 36, 36)
-	title.Text = "PigGod's Liquid"
-	title.TextColor3 = Color3.fromRGB(255, 255, 255)
-	title.TextScaled = true
-	title.Font = Enum.Font.GothamSemibold
-	title.Parent = mainFrame
-	-- 拖动功能（双端支持）
-	local dragConn = nil
-	local dragInput, dragStart, startPos
-	
-	local function onInputEnded(input)
-		if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) and dragConn then
-			dragConn:Disconnect()
-			dragConn = nil
-		end
-	end
-	
-	title.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			dragInput = input
-			dragStart = input.Position
-			startPos = mainFrame.Position
-			dragConn = UserInputService.InputChanged:Connect(function(input2)
-				if input2 == dragInput then
-					local delta = input2.Position - dragStart
-					mainFrame.Position = startPos + UDim2.new(0, delta.X, 0, delta.Y)
-				end
-			end)
-		end
-	end)
-	
-	UserInputService.InputEnded:Connect(onInputEnded)
+    -- 玩家透视（ESP）
+    ESP = {
+        enable = function()
+            Connections.ESP = RunService.RenderStepped:Connect(function()
+                for _, plr in ipairs(Players:GetPlayers()) do
+                    if plr ~= LocalPlayer and plr.Character and not plr.Character:FindFirstChild("ESP_Highlight") then
+                        local highlight = Instance.new("Highlight")
+                        highlight.Name = "ESP_Highlight"
+                        highlight.FillColor = Color3.fromRGB(200, 20, 20)
+                        highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+                        highlight.OutlineTransparency = 0
+                        highlight.FillTransparency = 0.5
+                        highlight.Enabled = true
+                        highlight.Parent = plr.Character
+                    end
+                end
+            end)
+        end,
+        disable = function()
+            if Connections.ESP then Connections.ESP:Disconnect() Connections.ESP = nil end
+            for _, obj in pairs(Workspace:GetDescendants()) do
+                if obj:IsA("Highlight") and obj.Name == "ESP_Highlight" then obj:Destroy() end
+            end
+        end,
+    },
 
-	local closeBtn = Instance.new("TextButton")
-	closeBtn.Name = "CloseBtn"
-	closeBtn.Size = UDim2.new(0, 25, 0, 25)
-	closeBtn.Position = UDim2.new(1, -28, 0, 3)
-	closeBtn.AnchorPoint = Vector极速2.new(1, 0)
-	closeBtn.BackgroundColor3 = Color3.fromRGB(200, 20, 20)
-	closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-	closeBtn.Font = Enum.Font.GothamSemibold
-	closeBtn.Text = "X"
-	closeBtn.Parent = title
-	closeBtn.Activated:Connect(function()
-		IsGUIVisible = false
-		gui.Enabled = false
-		UserInputService.InputEnded:Disconnect(onInputEnded)
-	end)
+    -- 墙壁攀爬
+    WallClimb = {
+        enable = function()
+            if not Humanoid or not HumanoidRootPart then return end
+            Connections.WallClimb = RunService.Stepped:Connect(function()
+                if Humanoid and HumanoidRootPart then
+                    local raycastParams = RaycastParams.new()
+                    raycastParams.FilterDescendantsInstances = {Character}
+                    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+                    local origin = HumanoidRootPart.Position
+                    local direction = HumanoidRootPart.CFrame.LookVector * 2
+                    local raycastResult = Workspace:Raycast(origin, direction, raycastParams)
+                    if raycastResult and Humanoid.MoveDirection.Magnitude > 0 then
+                        Humanoid.Jump = true
+                    end
+                end
+            end)
+        end,
+        disable = function()
+            if Connections.WallClimb then Connections.WallClimb:Disconnect() Connections.WallClimb = nil end
+        end,
+    }
+}
+-- 继续添加功能处理器（移动与战斗类）
+table.insert(FeatureHandlers, {
+    -- 移动加速
+    Speed = {
+        enable = function()
+            if not Humanoid then return end
+            Humanoid.WalkSpeed = FeatureSettings.Speed
+        end,
+        disable = function()
+            if not Humanoid then return end
+            Humanoid.WalkSpeed = (FeatureStates.Sprint and FeatureSettings.SprintSpeed) or 16
+        end,
+    },
 
-	local tabList = Instance.new("ScrollingFrame")
-	tabList.Name = "TabList"
-	tabList.Size = UDim2.new(0, 100, 1, -30)
-	tabList.Position = UDim2.new(0, 0, 0极速, 30)
-	tabList.BackgroundColor3 = Color3.fromRGB(30极速, 30, 30)
-	tabList.Parent = mainFrame
-	local tabListLayout = Instance.new("UIListLayout")
-	tabListLayout.Padding = UDim.new(0, 5)
-	tabListLayout.Parent = tabList
+    -- 高跳功能
+    HighJump = {
+        enable = function()
+            if not Humanoid then return end
+            Humanoid.JumpPower = FeatureSettings.JumpPower
+        end,
+        disable = function()
+            if not Humanoid then return end
+            Humanoid.JumpPower = 50
+        end,
+    },
 
-	local contentFrame = Instance.new("极速Frame")
-	contentFrame.Name = "ContentFrame"
-	contentFrame.Size = UDim2.new(1, -100, 1, -30)
-	contentFrame.Position = UDim2.new(0, 100, 0, 30)
-	contentFrame.BackgroundTransparency = 1
-	contentFrame.Parent = mainFrame
+    -- Y轴锁定（防止坠落/上升）
+    KeepY = {
+        originalY = 0,
+        enable = function()
+            if not HumanoidRootPart then return end
+            FeatureHandlers.KeepY.originalY = HumanoidRootPart.Position.Y
+            Connections.KeepY = RunService.Stepped:Connect(function()
+                if not HumanoidRootPart then return end
+                local pos = HumanoidRootPart.Position
+                HumanoidRootPart.CFrame = CFrame.new(pos.X, FeatureHandlers.KeepY.originalY, pos.Z)
+            end)
+        end,
+        disable = function()
+            if Connections.KeepY then Connections.KeepY:Disconnect() Connections.KeepY = nil end
+        end,
+    },
 
-	local CategoryFeatureMap = {
-		Movement = {"NoClip","Speed","HighJump","KeepY","Fly","AirJump","WallClimb","Sprint","Lowhop","Bhop"},
-		Visual = {"NightVision","ESP"},
-		Combat = {"Hitbox","NoKnockBack","NoSlow"},
-		Exploits = {"WalkFling","TP","ClickTP"},
-		Misc = {"AntiWalkFling", "Gravity"},
-	}
-	local lastActiveTab = nil
-	
-	local function setSettingValue(value, settingName)
-		local numVal = tonumber(value)
-		if not numVal then
-			notify("输入值无效，请输入数字。", 1.5)
-			return
-		end
-		FeatureSettings[settingName] = numVal
-		notify("'"..settingName.."' 已设置为: " .. tostring(numVal), 1.5)
-		if FeatureStates[settingName] then
-			FeatureHandlers[settingName].disable()
-			FeatureHandlers[settingName].enable()
-		end
-	end
+    -- 点击传送
+    ClickTP = {
+        enable = function()
+            if not Camera or not HumanoidRootPart then return end
+            Connections.ClickTP = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+                if gameProcessed or input.UserInputType ~= Enum.UserInputType.MouseButton1 or not Camera or not HumanoidRootPart then
+                    return
+                end
+                local mouseX, mouseY = UserInputService:GetMouseLocation().X, UserInputService:GetMouseLocation().Y
+                local ray = Camera:ViewportPointToRay(mouseX, mouseY)
+                local rayParams = RaycastParams.new()
+                rayParams.FilterDescendantsInstances = {Character}
+                rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+                local result = Workspace:Raycast(ray.Origin, ray.Direction * 1000, rayParams)
+                if result and result.Position then
+                    HumanoidRootPart.CFrame = CFrame.new(result.Position + Vector3.new(0, 3, 0))
+                end
+            end)
+        end,
+        disable = function()
+            if Connections.ClickTP then Connections.ClickTP:Disconnect() Connections.ClickTP = nil end
+        end,
+    },
 
-	local function showCategory(categoryName)
-		for _, child in ipairs(contentFrame:GetChildren()) do
-			child:Destroy()
-		end
+    -- 飞行功能
+    Fly = {
+        enable = function()
+            if not Humanoid or not HumanoidRootPart then return end
+            Humanoid.PlatformStand = true
+            Connections.Fly = RunService.Stepped:Connect(function()
+                if not HumanoidRootPart or not Humanoid then return end
+                local moveDirection = Humanoid.MoveDirection
+                local flyVelocity = Vector3.new(0, 0, 0)
+                if moveDirection.Magnitude > 0 then
+                    flyVelocity = HumanoidRootPart.CFrame.LookVector * moveDirection.Z * FeatureSettings.FlySpeed +
+                        HumanoidRootPart.CFrame.RightVector * moveDirection.X * FeatureSettings.FlySpeed
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+                    flyVelocity = flyVelocity + Vector3.new(0, FeatureSettings.FlySpeed, 0)
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+                    flyVelocity = flyVelocity - Vector3.new(0, FeatureSettings.FlySpeed, 0)
+                end
+                HumanoidRootPart.CFrame = HumanoidRootPart.CFrame + flyVelocity * (1/60)
+            end)
+        end,
+        disable = function()
+            if Connections.Fly then Connections.Fly:Disconnect() Connections.Fly = nil end
+            if Humanoid then
+                Humanoid.PlatformStand = false
+                pcall(function() Humanoid:ChangeState(Enum.HumanoidStateType.Running) end)
+            end
+        end,
+    },
 
-		local tabContent = Instance.new("ScrollingFrame")
-		tabContent.Size = UDim2.new(1, -10, 1, -10)
-		tabContent.Position = UDim2.new(0, 5, 0, 5)
-		tabContent.BackgroundTransparency = 1
-		tabContent.Parent = contentFrame
-		local contentLayout = Instance.new("UIListLayout")
-		contentLayout.Padding = UDim.new(0, 5)
-		contentLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-		contentLayout.Parent = tabContent
+    -- 空中跳跃
+    AirJump = {
+        enable = function()
+            Connections.AirJump = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+                if gameProcessed then return end
+                if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == Enum.KeyCode.Space then
+                    if Humanoid and Humanoid.FloorMaterial == Enum.Material.Air then
+                        Humanoid.Jump = true
+                    end
+                end
+            end)
+        end,
+        disable = function()
+            if Connections.AirJump then Connections.AirJump:Disconnect() Connections.AirJump = nil end
+        end,
+    },
 
-		for _, featureName in ipairs(CategoryFeatureMap[categoryName]) do
-			local buttonFrame = Instance.new("Frame")
-			buttonFrame.Size = UDim2.new(1, 0, 0, 40)
-			buttonFrame.BackgroundTransparency = 1
-		极速	buttonFrame.Parent = tabContent
-			
-			local featureBtn = Instance.new("TextButton")
-			featureBtn.Name = featureName
-			featureBtn.Size = UDim2.new(0, 150, 1, 0)
-			featureBtn.BackgroundColor3 = FeatureStates[featureName] and Color3.fromRGB(10, 100, 200) or Color3.fromRGB(60, 60, 60)
-			featureBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-			featureBtn.Font = Enum.Font.GothamSemibold
-			featureBtn.Text = featureName
-			featureBtn.TextScaled = true
-			featureBtn.Parent = buttonFrame
-			featureBtn.Activated:Connect(function()
-				toggleFeature(featureName)
-			end)
-			featureBtn.InputBegan:Connect(function(input)
-				if input.UserInputType == Enum.UserInputType.MouseButton2 then
-					startBinding(featureName)
-				end
-			end)
+    -- 防甩飞
+    AntiWalkFling = {
+        lastVelocity = Vector3.new(),
+        maxSafeVelocity = 80,
+        enable = function()
+            Connections.AntiWalkFling = RunService.Stepped:Connect(function()
+                if not HumanoidRootPart then return end
+                local currentVelocity = HumanoidRootPart.Velocity
+                if (currentVelocity - FeatureHandlers.AntiWalkFling.lastVelocity).Magnitude > FeatureHandlers.AntiWalkFling.maxSafeVelocity then
+                    HumanoidRootPart.Velocity = FeatureHandlers.AntiWalkFling.lastVelocity
+                    notify("防甩飞已启动！", 1)
+                end
+                FeatureHandlers.AntiWalkFling.lastVelocity = currentVelocity
+            end)
+        end,
+        disable = function()
+            if Connections.AntiWalkFling then Connections.AntiWalkFling:Disconnect() Connections.AntiWalkFling = nil end
+        end,
+    },
 
-			FeatureButtonRefs[featureName] = { button = featureBtn, frame = buttonFrame }
-			
-			-- 添加设置输入框
-			local settingNames = {"Speed", "HighJump", "FlySpeed", "Gravity", "HitboxScale", "SprintSpeed"}
-			local hasInput = false
-			local settingName = ""
-			if featureName == "Speed" then settingName = "Speed" end
-			if featureName == "HighJump" then settingName = "JumpPower" end
-			if featureName == "Fly" then settingName = "FlySpeed极速" end
-			if featureName == "Gravity" then settingName = "Gravity" end
-			if featureName == "Hitbox" then settingName = "HitboxScale" end
-			
-			if settingName ~= "" then
-				local inputField = Instance.new("TextBox")
-				inputField.Size = UDim2.new(0, 60, 1, 0)
-				inputField.Position = UDim2.new(0, 160, 0, 0)
-				inputField.PlaceholderText = "Value"
-				inputField.Text = tostring(FeatureSettings[settingName])
-				inputField.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-				inputField.TextColor3 = Color3.fromRGB(255, 255, 255)
-				inputField.TextScaled = true
-				inputField.Font = Enum.Font.GothamSemibold
-				inputField.Parent = buttonFrame
-				inputField.FocusLost:Connect(function()
-					setSettingValue(inputField.Text, settingName)
-				end)
-			end
+    -- 冲刺功能
+    Sprint = {
+        enable = function()
+            if not Humanoid then return end
+            Humanoid.WalkSpeed = FeatureSettings.SprintSpeed
+        end,
+        disable = function()
+            if not Humanoid then return end
+            Humanoid.WalkSpeed = (FeatureStates.Speed and FeatureSettings.Speed) or 16
+        end,
+    },
 
-			local infoBtn = Instance.new("TextButton")
-			infoBtn.Size = UDim2.new(0, 25, 1, 0)
-			infoBtn.Position = UDim2.new(1, -25, 0, 0)
-			infoBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-			infoBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-			infoBtn.Font = Enum.Font.GothamSemibold
-			infoBtn.Text = "?"
-			infoBtn.Parent = buttonFrame
-			infoBtn.Activated:Connect(function()
-				local titleText = featureName .. " 详情"
-				local contentText = "此功能暂无详细描述。"
-				local settingName = nil
-				if featureName == "NoClip" then contentText = "启用后可以穿过墙壁和障碍物。中键点击按钮进行键位绑定。"
-				elseif featureName == "Speed" then contentText = "调整行走速度。输入框可以设置新的速度值 (1-500)。" settingName = "Speed"
-				elseif featureName == "HighJump" then contentText = "调整跳跃高度。输入框可以设置新的跳跃力 (1-200)。" settingName = "JumpPower"
-				elseif featureName == "KeepY" then contentText = "启用后将锁定角色的Y轴高度，防止掉落。"
-				elseif featureName == "Fly" then contentText = "启用后可自由飞行，WASD移动，空格上升，Shift下降。输入框可设置飞行速度 (1-300)。" settingName = "FlySpeed"
-				elseif featureName == "AirJump" then contentText = "启用后可以在空中无限次跳跃。"
-				elseif featureName == "WallClimb极速" then contentText = "启用后靠近墙壁时会自动攀爬。"
-				elseif featureName == "Sprint" then contentText = "启用后角色的行走速度会提升到疾跑速度。"
-				elseif featureName == "Lowhop" then contentText = "自动进行超低跳跃，通常用于加速。"
-				elseif featureName == "Bhop" then contentText = "基于跳跃的加速功能。通常用于在平地上快速移动。"
-				elseif featureName == "NightVision" then contentText = "启用后游戏亮度将最大化，可以清晰看到黑暗区域极速。"
-				else极速if featureName == "NoKnockBack" then contentText = "防止玩家被外力击退，如物理攻击或爆炸。"
-				elseif featureName == "NoSlow" then contentText = "防止玩家被减速效果影响，始终保持正常移动速度。"
-				elseif featureName == "ESP" then contentText = "启用后将高亮显示其他玩家，即使隔着障碍物也能看到。"
-				elseif featureName == "WalkFling" then contentText = "利用移动时的物理惯性将周围玩家甩飞。"
-				elseif featureName == "TP" then contentText = "打开一个列表，可以选择其他玩家进行传送。"
-				elseif featureName == "ClickTP" then contentText = "启用后，鼠标左键点击任意地方即可瞬移到该位置。"
-				elseif featureName == "AntiWalkFling" then contentText = "防止被其他玩家的甩飞功能影响。"
-				elseif featureName == "Gravity" then contentText = "调整游戏世界的重力。默认重力值为 196.2。" settingName = "Gravity"
-				elseif featureName == "Hitbox" then contentText = "调整其他玩家的碰撞箱大小。输入框可设置新的比例（例如：2代表放大2倍）。" settingName = "HitboxScale"
-				end
-				createDetailPanel(titleText, contentText, settingName, setSettingValue)
-			end)
-		end
-	end
-	
-	for categoryName, _ in pairs(CategoryFeatureMap) do
-		local tabBtn = Instance.new("TextButton")
-		tabBtn.Size = UDim2.new(1, 0, 0, 30)
-		tabBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-		tabBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-		tabBtn.Text = categoryName
-		tabBtn.TextScaled = true
-		tabBtn.Font = Enum.Font.GothamSemibold
-		tabBtn.Parent = tabList
-		tabBtn.Activated:Connect(function()
-			if lastActiveTab then lastActiveTab.BackgroundColor3 = Color3.fromRGB(40, 40, 40) end
-			tabBtn.BackgroundColor3 = Color3.fromRGB(10, 100, 200)
-			lastActiveTab = tabBtn
-			showCategory(categoryName)
-		end)
-	end
-	
-	task.spawn(function()
-		task.wait(0.1)
-		if tabList:FindFirstChildOfClass("TextButton") then
-			tabList:FindFirstChildOfClass("TextButton").Activated:Fire()
-		end
-	end)
+    -- LowHop（Hypixel风格低跳）
+    LowHop = {
+        airTicks = 0,
+        shouldStrafe = false,
+        enable = function()
+            if not Humanoid or not HumanoidRootPart then 
+                notify("LowHop", "角色未加载，无法启用", 2)
+                return 
+            end
+            
+            Connections.LowHop = RunService.Heartbeat:Connect(function()
+                if not Humanoid or not HumanoidRootPart or not Character then return end
+                local velocity = HumanoidRootPart.Velocity
+                local speedAmplifier = getSpeedAmplifier()
+                local glide = FeatureSettings.LowHopGlide
 
-	return gui
+                FeatureHandlers.LowHop.shouldStrafe = false
+
+                if Humanoid.FloorMaterial ~= Enum.Material.Air then
+                    FeatureHandlers.LowHop.airTicks = 0
+                    velocity = withStrafe(velocity)
+                    FeatureHandlers.LowHop.shouldStrafe = true
+                else
+                    FeatureHandlers.LowHop.airTicks += 1
+                    local airTicks = FeatureHandlers.LowHop.airTicks
+
+                    if airTicks == 1 then
+                        velocity = withStrafe(velocity)
+                        FeatureHandlers.LowHop.shouldStrafe = true
+                        velocity = velocity + Vector3.new(0, 0.0568, 0)
+                    elseif airTicks == 3 then
+                        velocity = Vector3.new(velocity.X * 0.95, velocity.Y - 0.13, velocity.Z * 0.95)
+                    elseif airTicks == 4 then
+                        velocity = velocity - Vector3.new(0, 0.2, 0)
+                    elseif airTicks == 7 and glide and isGroundExempt() then
+                        velocity = Vector3.new(velocity.X, 0, velocity.Z)
+                    end
+
+                    if isGroundExempt() then velocity = withStrafe(velocity) end
+
+                    if Humanoid.Health < Humanoid.MaxHealth then
+                        local minSpeed = 0.281
+                        velocity = withStrafe(velocity, math.max(velocity.Magnitude, minSpeed))
+                    end
+
+                    if speedAmplifier == 2 then
+                        if airTicks == 1 or airTicks == 2 or airTicks == 5 or airTicks == 6 or airTicks == 8 then
+                            velocity = Vector3.new(velocity.X * 1.2, velocity.Y, velocity.Z * 1.2)
+                        end
+                    end
+                end
+
+                HumanoidRootPart.Velocity = velocity
+            end)
+
+            Connections.LowHopJump = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+                if gameProcessed then return end
+                if input.UserInputType ~= Enum.UserInputType.Keyboard or input.KeyCode ~= Enum.KeyCode.Space then return end
+                if not Humanoid or not HumanoidRootPart then return end
+
+                local speedAmplifier = getSpeedAmplifier()
+                local minSpeed = 0.247 + 0.15 * speedAmplifier
+                local currentSpeed = HumanoidRootPart.Velocity.Magnitude
+                local targetSpeed = math.max(currentSpeed, minSpeed)
+
+                local velocity = withStrafe(HumanoidRootPart.Velocity, targetSpeed)
+                HumanoidRootPart.Velocity = velocity
+                FeatureHandlers.LowHop.shouldStrafe = true
+            end)
+
+            notify("LowHop", "Hypixel风格低跳已启用", 2)
+        end,
+        disable = function()
+            if Connections.LowHop then
+                Connections.LowHop:Disconnect()
+                Connections.LowHop = nil
+            end
+            if Connections.LowHopJump then
+                Connections.LowHopJump:Disconnect()
+                Connections.LowHopJump = nil
+            end
+            FeatureHandlers.LowHop.airTicks = 0
+            FeatureHandlers.LowHop.shouldStrafe = false
+            notify("LowHop", "低跳已关闭", 2)
+        end,
+    },
+
+    -- 重力修改
+    Gravity = {
+        enable = function()
+            Workspace.Gravity = FeatureSettings.Gravity
+        end,
+        disable = function()
+            Workspace.Gravity = 196.2
+        end,
+    },
+
+    -- 免疫击退
+    NoKnockBack = {
+        enable = function()
+            Connections.NoKnockBack = RunService.Heartbeat:Connect(function()
+                if not Character then return end
+                for _, child in ipairs(Character:GetChildren()) do
+                    if child:IsA("BodyVelocity") or child:IsA("BodyForce") or child:IsA("BodyGyro") then
+                        child:Destroy()
+                    end
+                end
+            end)
+        end,
+        disable = function()
+            if Connections.NoKnockBack then
+                Connections.NoKnockBack:Disconnect()
+                Connections.NoKnockBack = nil
+            end
+        end,
+    },
+
+    -- 免疫减速
+    NoSlow = {
+        enable = function()
+            Connections.NoSlow = RunService.Heartbeat:Connect(function()
+                if not Humanoid then return end
+                if Humanoid.WalkSpeed < 16 and Humanoid.WalkSpeed > 0 then
+                    Humanoid.WalkSpeed = 16
+                end
+            end)
+        end,
+        disable = function()
+            if Connections.NoSlow then
+                Connections.NoSlow:Disconnect()
+                Connections.NoSlow = nil
+            end
+        end,
+    },
+
+    -- 连跳（Bhop）
+    Bhop = {
+        enable = function()
+            Connections.Bhop = RunService.Heartbeat:Connect(function()
+                if not Humanoid or not HumanoidRootPart then return end
+                if Humanoid.FloorMaterial ~= Enum.Material.Air then
+                    Humanoid.Jump = true
+                    local moveVec = Humanoid.MoveDirection * 1.05
+                    HumanoidRootPart.Velocity = HumanoidRootPart.Velocity + HumanoidRootPart.CFrame.LookVector * moveVec.Z * 0.05
+                end
+            end)
+        end,
+        disable = function()
+            if Connections.Bhop then
+                Connections.Bhop:Disconnect()
+                Connections.Bhop = nil
+            end
+        end,
+    },
+
+    -- 行走甩飞（已修复，移动到Exploit类）
+    WalkFling = {
+        hiddenfling = false,
+        flingConnection = nil,
+        diedConnection = nil,
+        movel = 0.1, -- 垂直速度波动系数
+        
+        enable = function()
+            if not Humanoid or not HumanoidRootPart or not Character then 
+                notify("行走甩飞", "角色未加载，无法启用", 2)
+                return 
+            end
+            
+            -- 初始化检测标识
+            if not ReplicatedStorage:FindFirstChild("juisdfj0i32i0eidsuf0iok") then
+                local detection = Instance.new("Decal")
+                detection.Name = "juisdfj0i32i0eidsuf0iok"
+                detection.Parent = ReplicatedStorage
+            end
+            
+            -- 核心甩飞循环
+            FeatureHandlers.WalkFling.flingConnection = RunService.Heartbeat:Connect(function()
+                if not FeatureHandlers.WalkFling.hiddenfling then return end
+                if not Character or not HumanoidRootPart then return end
+                
+                local hrp = HumanoidRootPart
+                local vel = hrp.Velocity
+                
+                -- 执行甩飞速度逻辑
+                hrp.Velocity = vel * 10000 + Vector3.new(0, 10000, 0)
+                RunService.RenderStepped:Wait()
+                if hrp and hrp.Parent then
+                    hrp.Velocity = vel
+                end
+                RunService.Stepped:Wait()
+                if hrp and hrp.Parent then
+                    hrp.Velocity = vel + Vector3.new(0, FeatureHandlers.WalkFling.movel, 0)
+                    FeatureHandlers.WalkFling.movel = FeatureHandlers.WalkFling.movel * -1 -- 反向波动垂直速度
+                end
+            end)
+            
+            -- 角色死亡时自动停止
+            if Humanoid then
+                FeatureHandlers.WalkFling.diedConnection = Humanoid.Died:Connect(function()
+                    FeatureHandlers.WalkFling.hiddenfling = false
+                end)
+            end
+            
+            FeatureHandlers.WalkFling.hiddenfling = true
+            notify("行走甩飞", "已启用", 2)
+        end,
+        
+        disable = function()
+            FeatureHandlers.WalkFling.hiddenfling = false
+            -- 断开甩飞连接
+            if FeatureHandlers.WalkFling.flingConnection then
+                FeatureHandlers.WalkFling.flingConnection:Disconnect()
+                FeatureHandlers.WalkFling.flingConnection = nil
+            end
+            -- 断开死亡监听
+            if FeatureHandlers.WalkFling.diedConnection then
+                FeatureHandlers.WalkFling.diedConnection:Disconnect()
+                FeatureHandlers.WalkFling.diedConnection = nil
+            end
+            -- 移除检测标识
+            local detection = ReplicatedStorage:FindFirstChild("juisdfj0i32i0eidsuf0iok")
+            if detection then
+                detection:Destroy()
+            end
+            notify("行走甩飞", "已关闭", 2)
+        end,
+    }
+}
+
+-- 脚本加载时等待2秒并关闭所有功能
+task.wait(2)
+for feature, handler in pairs(FeatureHandlers) do
+    if handler.disable then
+        pcall(handler.disable)
+    end
 end
+notify("初始化完成", "所有功能已重置", 2)
 
--- 创建移动设备浮动按钮
-local function createMobileButton()
-	local button = Instance.new("TextButton")
-	button.Size = UDim2.new(0, 60, 0, 60)
-	button.Position = UDim2.new(0.5, -30, 0.8, -30)
-	button.BackgroundColor3 = Color3.fromRGB(26, 26, 26)
-	button.Text = "菜单"
-	button.TextColor3 = Color3.fromRGB(255, 255, 255)
-	button.TextScaled = true
-	button.ZIndex = 10000
-	button.Parent = PlayerGui
-	Instance.new("UICorner", button).CornerRadius = UDim.new(0, 10)
-	
-	local dragConn = nil
-	local dragInput, dragStart, startPos
-	
-	local function onInputEnded(input)
-		if (input.UserInputType == Enum.UserInputType.Touch) and dragConn then
-			dragConn:Disconnect()
-			dragConn = nil
-		end
-	end
-	
-	button.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.Touch then
-			dragInput = input
-			dragStart = input.Position
-			startPos = button.Position
-			dragConn = UserInputService.InputChanged:Connect(function(input2)
-				if input2 == dragInput then
-					local delta = input2.Position - dragStart
-					button.Position = startPos + UDim2.new(0, delta.X, 0, delta.Y)
-				end
-			end)
-		end
-	end)
-	
-	UserInputService.InputEnded:Connect(onInputEnded)
-	
-	button.Activated:Connect(function()
-		IsGUIVisible = not IsGUIVisible
-		MainGUI.Enabled = IsGUIVisible
-	end)
-	
-	return button
-end
+-- 欢迎弹窗
+local Confirmed = false
+WindUI:Popup({
+    Title = "皮革尬的脚盆v1.0",
+    Icon = "rbxassetid://129260712070622",
+    IconThemed = true,
+    Content = "欢迎使用皮革尬的脚盆。",
+    Buttons = {
+        {
+            Title = "进入脚盆。",
+            Icon = "arrow-right",
+            Callback = function() 
+                Confirmed = true 
+                WindUI:Notify({
+                    Title = "欢迎",
+                    Desc = "脚盆UI已激活，请尽情享受！",
+                    Duration = 3
+                })
+            end,
+            Variant = "Primary",
+        }
+    }
+})
 
--- 初始化函数
-local function init()
-	TP_GUI = createTPGUI()
-	MainGUI = createMainGUI()
-	
-	if IsMobile then
-		MobileButton = createMobileButton()
-		StarterGui:SetCore("ControlModule", nil)
-		notify("移动设备模式已启用。", 2)
-	else
-		StarterGui:SetCore("ControlModule", true)
-	end
-	
-	-- 鼠标锁定/解锁逻辑
-	UserInputService.InputBegan:Connect(function(input, gameProcessed)
-		if input.KeyCode == Enum.KeyCode.End then
-			if UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter then
-				MouseLockState = Enum.MouseBehavior.LockCenter
-				UserInputService.MouseBehavior = Enum.MouseBehavior.Default
-				notify("鼠标已解锁，点击恢复锁定。", 2)
-			elseif UserInputService.MouseBehavior == Enum.MouseBehavior.Default and MouseLockState then
-				UserInputService.MouseBehavior = MouseLockState
-				MouseLockState = nil
-				notify("鼠标已恢复锁定。", 2)
-			end
-		end
-	end)
-
-	-- 键位事件处理
-	UserInputService.InputBegan:Connect(function(input, gameProcessed)
-		if gameProcessed or BindingInProgress then return end
-		if input.KeyCode == Keybinds.ClickGUI then
-			IsGUIVisible = not IsGUIVisible
-			MainGUI.Enabled = IsGUIVisible
-			if IsGUIVisible then
-				if not IsMobile and UserInputService.MouseBehavior ~= Enum.MouseBehavior.Default then
-					MouseLockState = UserInputService.MouseBehavior
-					UserInputService.MouseBehavior = Enum.MouseBehavior.Default
-				end
-			else
-				if not IsMobile and MouseLockState then
-					UserInputService.MouseBehavior = MouseLockState
-					MouseLockState = nil
-				end
-			end
-			return
-		end
-		
-		for fname, kcode in pairs(Keybinds) do
-			if kcode == input.KeyCode then
-				toggleFeature(fname)
-				return
-			end
-		end
-	end)
-
-	notify("客户端初始化完成！默认快捷键: RightShift", 3)
-end
-
--- 启动初始化
-local success, err = pcall(init)
-if not success then
-	warn("Initialization failed: " .. err)
-	notify("客户端初始化失败。请检查控制台。", 5)
-end
+repeat task.wait() until Confirmed
